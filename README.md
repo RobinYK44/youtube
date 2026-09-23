@@ -94,6 +94,7 @@ docker run -d --restart always --name shortsbot \
 ### Kiesmodus: zelf de beste kiezen
 Met `/kiesmodus aantal:15` maakt de bot elke dag 15 shorts en stuurt ze met een voorbeeldvideo naar Discord.
 Klik op **✅ Kies deze** bij de shorts die je het beste vindt; ze worden ingepland op de eerstvolgende vrije tijd.
+Met **❌ Afkeuren** gooi je een short weg; die wordt nooit gebruikt, ook niet als de bot zelf kiest.
 Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met de meeste views.
 `/kiesmodus aantal:0` zet hem weer op volledig automatisch.
 

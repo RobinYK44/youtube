@@ -67,6 +67,30 @@ class PickButton(discord.ui.DynamicItem[discord.ui.Button], template=r"pick:(?P<
             await interaction.followup.send(text, ephemeral=True)
 
 
+class RejectButton(discord.ui.DynamicItem[discord.ui.Button], template=r"reject:(?P<clip_id>.+)"):
+    """'Afkeuren' button under a candidate: the Short is thrown away and never used."""
+
+    def __init__(self, clip_id: str):
+        super().__init__(
+            discord.ui.Button(
+                label="Afkeuren", style=discord.ButtonStyle.danger, emoji="❌", custom_id=f"reject:{clip_id}"
+            )
+        )
+        self.clip_id = clip_id
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(match["clip_id"])
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        ok, text = await interaction.client.reject(self.clip_id)
+        if ok:
+            await interaction.edit_original_response(content=f"{interaction.message.content}\n{text}", view=None)
+        else:
+            await interaction.followup.send(text, ephemeral=True)
+
+
 class ShortsBot(discord.Client):
     def __init__(self):
         super().__init__(intents=discord.Intents.default())
@@ -79,7 +103,7 @@ class ShortsBot(discord.Client):
         register_commands(self)
 
     async def setup_hook(self):
-        self.add_dynamic_items(PickButton)
+        self.add_dynamic_items(PickButton, RejectButton)
         self.scheduler.start()
 
     async def on_ready(self):
@@ -216,6 +240,7 @@ class ShortsBot(discord.Client):
             preview = await asyncio.to_thread(pipeline.preview, video)
         view = discord.ui.View(timeout=None)
         view.add_item(PickButton(clip.id))
+        view.add_item(RejectButton(clip.id))
         text = (
             f"🎬 **{number}/{total}** · **{clip.title}** — {clip.broadcaster_name} "
             f"({clip.view_count:,} views)\n{' '.join('#' + t for t in make_hashtags(clip))}\n<{clip.url}>"
@@ -225,6 +250,16 @@ class ShortsBot(discord.Client):
         finally:
             if preview:
                 preview.unlink(missing_ok=True)
+
+    async def reject(self, clip_id: str) -> tuple[bool, str]:
+        """Throw a candidate away. It will not be picked, also not automatically."""
+        async with self.upload_lock:
+            row = db.get(clip_id)
+            if row is None or row["status"] != "candidate":
+                return False, "Deze short is al gekozen of verlopen."
+            db.mark(pipeline.clip_from_row(row), "rejected")
+            pipeline.video_path(clip_id).unlink(missing_ok=True)
+            return True, f"❌ Afgekeurd. Nog {len(db.candidates())} over om uit te kiezen."
 
     async def pick(self, clip_id: str, auto: bool = False) -> tuple[bool, str]:
         """Upload a candidate into the first free publish time."""
