@@ -223,6 +223,8 @@ class ShortsBot(discord.Client):
         )
         if await self.make_batch(pipeline.candidates_per_day(), header):
             db.set_setting("batch_at", now.isoformat())
+            if config.compilations_per_day:
+                await self.make_compilations(config.compilations_per_day)
 
     async def make_batch(self, count: int, header: str) -> bool:
         """Render `count` new candidates and post them. `header` may contain {n}. False when none were found."""
@@ -246,6 +248,20 @@ class ShortsBot(discord.Client):
         await self.say(f"👍 Alle {len(clips)} shorts staan klaar. Kies je favorieten!")
         return True
 
+    async def make_compilations(self, count: int) -> None:
+        """Compilations of 3 funny moments, posted as candidates to pick from."""
+        for number in range(1, count + 1):
+            try:
+                parts = await asyncio.to_thread(pipeline.pick_compilation)
+            except Exception as exc:
+                log.exception("Clips zoeken mislukt")
+                await self.say(f"⚠️ Clips zoeken mislukt: {_error_text(exc)}")
+                return
+            if not parts:
+                await self.say("🔍 Niet genoeg korte, grappige clips over voor een compilatie. Probeer het later nog eens.")
+                return
+            await self.make_candidate(pipeline.compilation_clip(parts), number, count)
+
     async def make_candidate(self, clip: Clip, number: int, total: int):
         async with self.lock:
             try:
@@ -256,15 +272,24 @@ class ShortsBot(discord.Client):
                 await self.say(f"⚠️ Bewerken van {clip.title} mislukt: {_error_text(exc)}")
                 return
             db.mark(clip, "candidate")
+            for part in clip.parts:
+                db.mark(part, "in_compilation")  # never used again on its own
             preview = await asyncio.to_thread(pipeline.preview, video)
         view = discord.ui.View(timeout=None)
         view.add_item(PickButton(clip.id))
         view.add_item(RejectButton(clip.id))
-        text = (
-            f"🎬 **{number}/{total}** · **{clip.title}** — {clip.broadcaster_name}"
-            f"\n🔥 {clip.view_count:,} views in {pipeline.age_hours(clip):.0f} uur\n"
-            f"{' '.join('#' + t for t in make_hashtags(clip))}\n<{clip.url}>"
-        )
+        hashtags = " ".join("#" + t for t in make_hashtags(clip))
+        if clip.parts:
+            lines = "".join(
+                f"\n**#{len(clip.parts) - i}** {part.title} — {part.broadcaster_name} ({part.view_count:,} views)"
+                for i, part in enumerate(clip.parts)
+            )
+            text = f"🎞️ **Compilatie {number}/{total}** · **{clip.title}**{lines}\n{hashtags}"
+        else:
+            text = (
+                f"🎬 **{number}/{total}** · **{clip.title}** — {clip.broadcaster_name}"
+                f"\n🔥 {clip.view_count:,} views in {pipeline.age_hours(clip):.0f} uur\n{hashtags}\n<{clip.url}>"
+            )
         try:
             await self.say(text, file=discord.File(preview) if preview else None, view=view)
         finally:
@@ -374,6 +399,18 @@ def register_commands(bot: ShortsBot):
         await interaction.response.send_message(f"🔍 Ik zoek {aantal} nieuwe shorts, even geduld...")
         header = "➕ Nog **{n} shorts** erbij, de beste die er nog zijn. Kies met **✅** of keur af met **❌**."
         bot.start_batch(bot.make_batch(aantal, header))
+
+    @tree.command(name="compilatie", description="Maak een short met 3 grappige momenten van verschillende streamers")
+    @app_commands.describe(aantal="Hoeveel compilaties (standaard 1)")
+    @admin
+    async def compilation(interaction: discord.Interaction, aantal: app_commands.Range[int, 1, 5] = 1):
+        if bot.making_batch:
+            await interaction.response.send_message("⏳ Ik ben nog bezig met shorts maken. Probeer het zo nog eens.")
+            return
+        await interaction.response.send_message(
+            f"🎞️ Ik maak {aantal} compilatie{'s' if aantal > 1 else ''} met 3 grappige momenten, even geduld..."
+        )
+        bot.start_batch(bot.make_compilations(aantal))
 
     @tree.command(name="ingepland_wissen", description="Maak de tijden van ingeplande shorts weer vrij")
     @admin

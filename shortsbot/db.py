@@ -21,7 +21,7 @@ _conn.executescript(
     """
 )
 _columns = [row["name"] for row in _conn.execute("PRAGMA table_info(clips)")]
-for _name in ("publish_at", "url", "broadcaster_name", "game", "score"):  # added after the first release
+for _name in ("publish_at", "url", "broadcaster_name", "game", "score", "parts"):  # added after the first release
     if _name not in _columns:
         _conn.execute(f"ALTER TABLE clips ADD COLUMN {_name} TEXT DEFAULT ''")
 # Older versions had approval buttons that did not survive a restart.
@@ -40,11 +40,12 @@ def is_known(clip_id: str) -> bool:
 def mark(clip, status: str, youtube_id: str = "", publish_at: str = "") -> None:
     _conn.execute(
         "INSERT OR REPLACE INTO clips"
-        " (id, broadcaster, title, views, status, youtube_id, updated_at, publish_at, url, broadcaster_name, game, score)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " (id, broadcaster, title, views, status, youtube_id, updated_at, publish_at, url, broadcaster_name, game, score,"
+        " parts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             clip.id, clip.broadcaster_login, clip.title, clip.view_count, status, youtube_id, _now(),
             publish_at, clip.url, clip.broadcaster_name, getattr(clip, "game", ""), str(getattr(clip, "score", "")),
+            ",".join(part.id for part in getattr(clip, "parts", [])),
         ),
     )
     _conn.commit()

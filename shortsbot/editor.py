@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tempfile
 import textwrap
+import unicodedata
 from pathlib import Path
 
 import yt_dlp
@@ -93,10 +94,19 @@ def _end_card(font: str, work_dir: Path, length: float) -> list[str]:
     return filters
 
 
-def _cut(duration: float) -> tuple[float, float]:
-    """(start, length) of the part to keep. Long clips keep their last `target` seconds, because clips
+def _plain(text: str) -> str:
+    """Drop emoji and other symbols: the video font cannot draw them and shows empty boxes instead."""
+    kept = "".join(
+        ch for ch in text
+        if ord(ch) <= 0xFFFF and unicodedata.category(ch) not in ("So", "Cs", "Co") and ch not in "\ufe0f\u200d"
+    )
+    return " ".join(kept.split())
+
+
+def _cut(duration: float, limit: int | None = None) -> tuple[float, float]:
+    """(start, length) of the part to keep. Long clips keep their last `limit` seconds, because clips
     are made right after something happened, so the moment is near the end."""
-    limit = min(config.target_short_seconds, config.max_short_seconds)
+    limit = min(limit or config.target_short_seconds, config.max_short_seconds)
     if duration <= 0:
         return 0.0, float(config.max_short_seconds)
     if duration <= limit + 5:  # a few seconds over is fine, cutting them helps nobody
@@ -104,12 +114,15 @@ def _cut(duration: float) -> tuple[float, float]:
     return duration - limit, float(limit)
 
 
-def render_short(source: Path, output: Path, title: str, credit: str, work_dir: Path) -> Path:
+def render_short(
+    source: Path, output: Path, title: str, credit: str, work_dir: Path,
+    limit: int | None = None, end_card: bool = True,
+) -> Path:
     font = _font()
-    start, length = _cut(_duration(source))
+    start, length = _cut(_duration(source), limit)
     overlays = []
     if font:
-        lines = textwrap.wrap(title, width=22)[:3]
+        lines = textwrap.wrap(_plain(title), width=22)[:3]
         texts = [(line, 64, 200 + i * 80) for i, line in enumerate(lines)]
         texts.append((credit, 44, "h-320"))
         for i, (text, size, y) in enumerate(texts):
@@ -120,7 +133,8 @@ def render_short(source: Path, output: Path, title: str, credit: str, work_dir: 
                 f":fontsize={size}:fontcolor=white:borderw=5:bordercolor=black"
                 f":x=(w-text_w)/2:y={y}"
             )
-        overlays += _end_card(font, work_dir, length)
+        if end_card:
+            overlays += _end_card(font, work_dir, length)
 
     graph = (
         "[0:v]split[a][b];"
@@ -135,14 +149,44 @@ def render_short(source: Path, output: Path, title: str, credit: str, work_dir: 
         "-filter_complex", graph,
         "-map", "[v]", "-map", "0:a?",
         "-t", f"{length:.2f}",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
-        "-c:a", "aac", "-b:a", "160k",
+        "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+        "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2",
         "-movflags", "+faststart",
         str(output),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg mislukt: {result.stderr.strip()[-800:]}")
+    return output
+
+
+def make_compilation(clip, output_dir: Path) -> Path:
+    """Several clips in one Short, counting down: #3, #2, #1 (the best one last)."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output = output_dir / f"{clip.id}.mp4"
+    total = len(clip.parts)
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        segments = []
+        for i, part in enumerate(clip.parts):
+            part_dir = work / f"part{i}"
+            part_dir.mkdir()
+            source = download(part.url, part_dir)
+            segment = work / f"segment{i}.mp4"
+            render_short(
+                source, segment, f"#{total - i}  {part.title}", f"twitch.tv/{part.broadcaster_login}", part_dir,
+                limit=config.compilation_part_seconds, end_card=i == total - 1,
+            )
+            segments.append(segment)
+        playlist = work / "segments.txt"
+        playlist.write_text("".join(f"file '{s.as_posix()}'\n" for s in segments), encoding="utf-8")
+        cmd = [
+            ffmpeg_exe(), "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(playlist),
+            "-c", "copy", "-movflags", "+faststart", str(output),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"ffmpeg mislukt: {result.stderr.strip()[-800:]}")
     return output
 
 

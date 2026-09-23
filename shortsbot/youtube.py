@@ -54,8 +54,16 @@ def moods(title: str) -> list[str]:
 
 def make_hashtags(clip, minimum: int = 6, maximum: int = 8) -> list[str]:
     """Hashtags without '#', most specific first. Always starts with 'shorts'."""
-    found = moods(clip.title)
-    tags = ["shorts", _hashtag(clip.broadcaster_name), _hashtag(getattr(clip, "game", "") or ""), *found]
+    parts = getattr(clip, "parts", None) or [clip]
+    found = list(dict.fromkeys(mood for part in parts for mood in moods(part.title)))
+    if len(parts) > 1:
+        found = list(dict.fromkeys(["funny", *found, "compilation"]))
+    tags = [
+        "shorts",
+        *(_hashtag(part.broadcaster_name) for part in parts),
+        *found,
+        *(_hashtag(getattr(part, "game", "") or "") for part in parts),
+    ]
     for filler in FILLER:
         if found and filler == "funny":
             continue  # a scary or rage clip should not also be called funny
@@ -130,13 +138,19 @@ def build_metadata(clip) -> dict:
     suffix = f" | {clip.broadcaster_name} #shorts"
     title = clip.title.strip() or f"{clip.broadcaster_name} moment"
     title = title[: 100 - len(suffix)].rstrip() + suffix
-    description = (
-        f"{clip.title}\n\n"
-        f"Credits: {clip.broadcaster_name} — https://twitch.tv/{clip.broadcaster_login}\n"
-        f"Originele clip: {clip.url}\n\n"
-        + " ".join(f"#{tag}" for tag in hashtags)
-    )
-    tags = list(dict.fromkeys([clip.broadcaster_name, clip.broadcaster_login, *hashtags, "twitch", "clips"]))
+    if clip.parts:
+        credits = "Credits:\n" + "".join(
+            f"#{len(clip.parts) - i} {part.broadcaster_name} — https://twitch.tv/{part.broadcaster_login} ({part.url})\n"
+            for i, part in enumerate(clip.parts)
+        )
+    else:
+        credits = (
+            f"Credits: {clip.broadcaster_name} — https://twitch.tv/{clip.broadcaster_login}\n"
+            f"Originele clip: {clip.url}\n"
+        )
+    description = f"{clip.title}\n\n{credits}\n" + " ".join(f"#{tag}" for tag in hashtags)
+    names = [part.broadcaster_name for part in clip.parts] or [clip.broadcaster_name, clip.broadcaster_login]
+    tags = list(dict.fromkeys([*names, *hashtags, "twitch", "clips"]))
     if getattr(clip, "game", ""):
         tags.append(clip.game)
     return {"title": title, "description": description, "tags": tags}

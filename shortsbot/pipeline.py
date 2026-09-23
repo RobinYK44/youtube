@@ -1,5 +1,7 @@
 """Glue: pick streamers -> find the best unused clip -> render -> upload."""
+import hashlib
 import logging
+import random
 import statistics
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -126,12 +128,58 @@ def pick_candidates(count: int, per_streamer: int = 3) -> list[Clip]:
     return picked
 
 
+COMPILATION_TITLES = [
+    "Funniest streamer moments this week 😂",
+    "Top 3 funniest streamer moments 😂",
+    "Streamers are NOT okay 💀",
+    "Chat could not believe this 💀",
+    "Try not to laugh: streamer edition 😂",
+]
+
+
+def is_funny(clip: Clip) -> bool:
+    title = clip.title.lower()
+    return "funny" in youtube.moods(clip.title) or any(word in title for word in HOT_WORDS)
+
+
+def pick_compilation(count: int = 3) -> list[Clip] | None:
+    """`count` short, funny clips of different streamers, worst first so the best one is #1 at the end."""
+    found = [c for c in find_candidates() if c.duration <= 35]
+    ordered = [c for c in found if is_funny(c)] + [c for c in found if not is_funny(c)]
+    parts, streamers = [], set()
+    for clip in ordered:
+        if clip.broadcaster_login not in streamers:
+            parts.append(clip)
+            streamers.add(clip.broadcaster_login)
+        if len(parts) == count:
+            return sorted(parts, key=lambda c: c.score)
+    return None
+
+
+def compilation_clip(parts: list[Clip]) -> Clip:
+    """One Clip that stands for the whole compilation (used for the database, Discord and YouTube)."""
+    best = parts[-1]
+    return Clip(
+        id="comp-" + hashlib.sha1("|".join(p.id for p in parts).encode()).hexdigest()[:12],
+        url=best.url,
+        title=random.choice(COMPILATION_TITLES),
+        broadcaster_login=best.broadcaster_login,
+        broadcaster_name=", ".join(p.broadcaster_name for p in reversed(parts)),
+        view_count=sum(p.view_count for p in parts),
+        duration=sum(min(p.duration, config.compilation_part_seconds) for p in parts),
+        created_at=max(p.created_at for p in parts),
+        score=round(sum(p.score for p in parts) / len(parts), 1),
+        parts=parts,
+    )
+
+
 def candidates_per_day() -> int:
     value = db.get_setting("candidates_per_day")
     return int(value) if value else config.candidates_per_day
 
 
 def clip_from_row(row) -> Clip:
+    parts = [clip_from_row(r) for r in (db.get(i) for i in (row["parts"] or "").split(",") if i) if r]
     return Clip(
         id=row["id"],
         url=row["url"] or f"https://clips.twitch.tv/{row['id']}",
@@ -143,6 +191,7 @@ def clip_from_row(row) -> Clip:
         created_at="",
         game=row["game"] or "",
         score=float(row["score"] or 0),
+        parts=parts,
     )
 
 
@@ -180,6 +229,8 @@ def open_slots(now: datetime | None = None, hours: int = 24) -> list[datetime]:
 
 
 def render(clip: Clip) -> Path:
+    if clip.parts:
+        return editor.make_compilation(clip, OUTPUT_DIR)
     return editor.make_short(clip, OUTPUT_DIR)
 
 

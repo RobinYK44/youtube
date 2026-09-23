@@ -56,6 +56,9 @@ class Config:
     max_short_seconds: int = _int("MAX_SHORT_SECONDS", 60)
     # Longer clips are cut to about this length. The end is kept: clips are made right after the moment.
     target_short_seconds: int = _int("TARGET_SHORT_SECONDS", 35)
+    # Kiesmodus: compilations (3 funny moments in one Short) added to every daily batch.
+    compilations_per_day: int = _int("COMPILATIONS_PER_DAY", 1)
+    compilation_part_seconds: int = _int("COMPILATION_PART_SECONDS", 18)
     font_path: str = os.getenv("FONT_PATH", "").strip()
 
     @property

@@ -1,6 +1,6 @@
 """Twitch Helix API: find the biggest live streamers and their most-viewed clips."""
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -21,6 +21,7 @@ class Clip:
     game_id: str = ""
     game: str = ""
     score: float = 0.0  # viral score, see pipeline.viral_score
+    parts: list["Clip"] = field(default_factory=list)  # set for a compilation of several clips
 
 
 class Twitch:

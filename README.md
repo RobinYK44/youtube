@@ -85,6 +85,7 @@ docker run -d --restart always --name shortsbot \
 | `/status` | Hoeveel shorts vandaag, wanneer de volgende komt, laatste uploads |
 | `/nu` | Meteen een short maken en uploaden |
 | `/kiesmodus aantal` | Elke dag zoveel shorts maken waar jij uit kiest (0 = volledig automatisch) |
+| `/compilatie aantal` | Short met 3 grappige momenten van verschillende streamers (#3, #2, #1) om uit te kiezen |
 | `/meer aantal` | Kiesmodus: nu meteen extra shorts zoeken om uit te kiezen (standaard 10) |
 | `/top` | De 10 grootste live streamers op dit moment |
 | `/streamers` | Van welke streamers de bot clips zoekt |
@@ -116,3 +117,5 @@ Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met 
 | `MIN_CLIP_SECONDS` | 10 | Alleen clips van minstens zoveel seconden |
 | `MAX_SHORT_SECONDS` | 60 | Maximale lengte van de short |
 | `TARGET_SHORT_SECONDS` | 35 | Langere clips worden ingekort tot ongeveer zoveel seconden (het einde blijft) |
+| `COMPILATIONS_PER_DAY` | 1 | Kiesmodus: zoveel compilaties (3 grappige momenten in één short) per dag erbij |
+| `COMPILATION_PART_SECONDS` | 18 | Maximale lengte van elk moment in een compilatie |
