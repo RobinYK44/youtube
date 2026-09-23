@@ -4,7 +4,10 @@ One-time login (run on a PC with a browser):
     python -m shortsbot.youtube auth
 This creates youtube_token.json; copy it to wherever the bot runs.
 """
+import html
+import os
 import sys
+import webbrowser
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -12,14 +15,57 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-from .config import config
+from .config import DATA_DIR, config
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
 
+def _open_login_page(url: str) -> None:
+    """Open the login URL via a local HTML file: long URLs break when copied from a terminal."""
+    page = DATA_DIR / "login.html"
+    page.write_text(
+        '<!doctype html><meta charset="utf-8"><title>Inloggen bij YouTube</title>'
+        '<body style="font-family:sans-serif;text-align:center;margin-top:80px">'
+        "<h1>Shortsbot: inloggen bij YouTube</h1>"
+        f'<p><a href="{html.escape(url)}" style="font-size:24px">Klik hier om in te loggen</a></p>'
+        f'<script>location.href = {url!r};</script>',
+        encoding="utf-8",
+    )
+    print("Je browser opent nu het Google-inlogscherm.")
+    print(f"Gebeurt er niks? Dubbelklik dan op dit bestand: {page}")
+    try:
+        if hasattr(os, "startfile"):
+            os.startfile(page)
+        else:
+            webbrowser.open(page.as_uri())
+    except Exception:
+        pass
+
+
 def authorize() -> None:
-    flow = InstalledAppFlow.from_client_secrets_file(str(config.youtube_client_secrets), SCOPES)
-    creds = flow.run_local_server(port=0, prompt="consent", access_type="offline")
+    secrets = config.youtube_client_secrets
+    if not secrets.exists():
+        doubled = secrets.with_name(secrets.name + ".json")
+        hint = f" Het bestand heet nu {doubled.name}; hernoem het naar {secrets.name}." if doubled.exists() else ""
+        sys.exit(f"Bestand {secrets.name} niet gevonden in {secrets.parent}.{hint}")
+
+    flow = InstalledAppFlow.from_client_secrets_file(str(secrets), SCOPES)
+    make_url = flow.authorization_url
+
+    def authorization_url(**kwargs):
+        url, state = make_url(**kwargs)
+        _open_login_page(url)
+        return url, state
+
+    flow.authorization_url = authorization_url
+    creds = flow.run_local_server(
+        port=0,
+        open_browser=False,
+        authorization_prompt_message="",
+        success_message="Gelukt! Je kunt dit tabblad sluiten en teruggaan naar het zwarte venster.",
+        prompt="consent",
+        access_type="offline",
+    )
     config.youtube_token_file.write_text(creds.to_json(), encoding="utf-8")
     print(f"Klaar! Token opgeslagen in {config.youtube_token_file}")
 
