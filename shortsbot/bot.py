@@ -27,6 +27,11 @@ def _error_text(exc: Exception) -> str:
     text = str(exc)
     if "quotaExceeded" in text or "uploadLimitExceeded" in text:
         return "YouTube-limiet voor vandaag bereikt. Morgen gaat de bot automatisch verder."
+    if "invalid_grant" in text:
+        return (
+            "YouTube-login is verlopen. Draai op je pc `python -m shortsbot.youtube auth` "
+            "en start de bot opnieuw."
+        )
     return f"{type(exc).__name__}: {text[:1500]}"
 
 
