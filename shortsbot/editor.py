@@ -93,8 +93,20 @@ def _end_card(font: str, work_dir: Path, length: float) -> list[str]:
     return filters
 
 
+def _cut(duration: float) -> tuple[float, float]:
+    """(start, length) of the part to keep. Long clips keep their last `target` seconds, because clips
+    are made right after something happened, so the moment is near the end."""
+    limit = min(config.target_short_seconds, config.max_short_seconds)
+    if duration <= 0:
+        return 0.0, float(config.max_short_seconds)
+    if duration <= limit + 5:  # a few seconds over is fine, cutting them helps nobody
+        return 0.0, min(duration, config.max_short_seconds)
+    return duration - limit, float(limit)
+
+
 def render_short(source: Path, output: Path, title: str, credit: str, work_dir: Path) -> Path:
     font = _font()
+    start, length = _cut(_duration(source))
     overlays = []
     if font:
         lines = textwrap.wrap(title, width=22)[:3]
@@ -108,7 +120,6 @@ def render_short(source: Path, output: Path, title: str, credit: str, work_dir: 
                 f":fontsize={size}:fontcolor=white:borderw=5:bordercolor=black"
                 f":x=(w-text_w)/2:y={y}"
             )
-        length = min(_duration(source) or config.max_short_seconds, config.max_short_seconds)
         overlays += _end_card(font, work_dir, length)
 
     graph = (
@@ -120,10 +131,10 @@ def render_short(source: Path, output: Path, title: str, credit: str, work_dir: 
     )
     cmd = [
         ffmpeg_exe(), "-y", "-loglevel", "error",
-        "-i", str(source),
+        "-ss", f"{start:.2f}", "-i", str(source),
         "-filter_complex", graph,
         "-map", "[v]", "-map", "0:a?",
-        "-t", str(config.max_short_seconds),
+        "-t", f"{length:.2f}",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
         "-c:a", "aac", "-b:a", "160k",
         "-movflags", "+faststart",

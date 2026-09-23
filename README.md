@@ -115,3 +115,4 @@ Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met 
 | `MIN_CLIP_VIEWS` | 500 | Alleen clips met minstens zoveel views |
 | `MIN_CLIP_SECONDS` | 10 | Alleen clips van minstens zoveel seconden |
 | `MAX_SHORT_SECONDS` | 60 | Maximale lengte van de short |
+| `TARGET_SHORT_SECONDS` | 35 | Langere clips worden ingekort tot ongeveer zoveel seconden (het einde blijft) |

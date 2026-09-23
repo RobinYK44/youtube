@@ -68,10 +68,13 @@ def viral_score(clip: Clip, streamer_median: float, now: datetime | None = None)
     title = clip.title.lower()
     if youtube.moods(clip.title) or any(word in title for word in HOT_WORDS):
         score *= 1.3
-    if 15 <= clip.duration <= 45:
-        score *= 1.15
+    # Short Shorts do best: 15-35 s is ideal, long clips get cut and may lose context.
+    if 15 <= clip.duration <= 35:
+        score *= 1.2
     elif clip.duration < 12:
         score *= 0.85
+    elif clip.duration > 45:
+        score *= 0.9
     return round(score, 1)
 
 

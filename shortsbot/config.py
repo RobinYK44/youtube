@@ -54,6 +54,8 @@ class Config:
     min_clip_views: int = _int("MIN_CLIP_VIEWS", 500)
     min_clip_seconds: int = _int("MIN_CLIP_SECONDS", 10)
     max_short_seconds: int = _int("MAX_SHORT_SECONDS", 60)
+    # Longer clips are cut to about this length. The end is kept: clips are made right after the moment.
+    target_short_seconds: int = _int("TARGET_SHORT_SECONDS", 35)
     font_path: str = os.getenv("FONT_PATH", "").strip()
 
     @property
