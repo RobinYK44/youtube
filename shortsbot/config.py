@@ -47,6 +47,7 @@ class Config:
 
     clip_lookback_days: int = _int("CLIP_LOOKBACK_DAYS", 2)
     min_clip_views: int = _int("MIN_CLIP_VIEWS", 500)
+    min_clip_seconds: int = _int("MIN_CLIP_SECONDS", 10)
     max_short_seconds: int = _int("MAX_SHORT_SECONDS", 60)
     font_path: str = os.getenv("FONT_PATH", "").strip()
 

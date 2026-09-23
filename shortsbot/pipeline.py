@@ -55,7 +55,7 @@ def find_candidates() -> list[Clip]:
             c
             for c in clips
             if c.view_count >= config.min_clip_views
-            and c.duration >= 5
+            and c.duration >= config.min_clip_seconds
             and c.duration <= config.max_short_seconds + 1
             and not db.is_known(c.id)
         ]

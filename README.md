@@ -103,4 +103,5 @@ Wil je elke short eerst zien? Zet `APPROVAL_MODE=true` in `.env`; de bot vraagt 
 | `YOUTUBE_PRIVACY` | public | `public`, `unlisted` of `private` |
 | `CLIP_LOOKBACK_DAYS` | 2 | Hoe ver terug zoeken naar clips |
 | `MIN_CLIP_VIEWS` | 500 | Alleen clips met minstens zoveel views |
+| `MIN_CLIP_SECONDS` | 10 | Alleen clips van minstens zoveel seconden |
 | `MAX_SHORT_SECONDS` | 60 | Maximale lengte van de short |
