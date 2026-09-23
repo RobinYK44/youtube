@@ -1,5 +1,6 @@
 """Download a clip and turn it into a vertical 1080x1920 YouTube Short with ffmpeg."""
 import functools
+import re
 import shutil
 import subprocess
 import tempfile
@@ -63,6 +64,35 @@ def download(url: str, dest_dir: Path) -> Path:
         return Path(ydl.prepare_filename(info))
 
 
+def _duration(video: Path) -> float:
+    result = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(video)], capture_output=True, text=True)
+    match = re.search(r"Duration: (\d+):(\d+):(\d+\.?\d*)", result.stderr)
+    if not match:
+        return 0.0
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def _end_card(font: str, work_dir: Path, length: float) -> list[str]:
+    """'LIKE & SUBSCRIBE' that fades in during the last 3 seconds, below the clip."""
+    start = max(0.0, length - 3)
+    fade = f"if(lt(t,{start}),0,min(1,(t-{start})/0.4))"
+    cards = [
+        ("LIKE & SUBSCRIBE", 76, 1330, ":box=1:boxcolor=0xE62117:boxborderw=22"),
+        ("for more clips!", 48, 1450, ":borderw=4:bordercolor=black"),
+    ]
+    filters = []
+    for i, (text, size, y, style) in enumerate(cards):
+        text_file = work_dir / f"endcard{i}.txt"
+        text_file.write_text(text, encoding="utf-8")
+        filters.append(
+            f"drawtext=fontfile={_filter_path(font)}:textfile={_filter_path(text_file)}"
+            f":fontsize={size}:fontcolor=white{style}:x=(w-text_w)/2:y={y}"
+            f":enable='gte(t,{start})':alpha='{fade}'"
+        )
+    return filters
+
+
 def render_short(source: Path, output: Path, title: str, credit: str, work_dir: Path) -> Path:
     font = _font()
     overlays = []
@@ -78,6 +108,8 @@ def render_short(source: Path, output: Path, title: str, credit: str, work_dir: 
                 f":fontsize={size}:fontcolor=white:borderw=5:bordercolor=black"
                 f":x=(w-text_w)/2:y={y}"
             )
+        length = min(_duration(source) or config.max_short_seconds, config.max_short_seconds)
+        overlays += _end_card(font, work_dir, length)
 
     graph = (
         "[0:v]split[a][b];"
