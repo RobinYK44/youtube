@@ -42,7 +42,10 @@ class Config:
     auto_discover_top: int = _int("AUTO_DISCOVER_TOP", 5)
     discover_language: str = os.getenv("DISCOVER_LANGUAGE", "en").strip()
 
-    uploads_per_day: int = _int("UPLOADS_PER_DAY", 4)
+    # Times (local, see TIMEZONE) at which YouTube publishes the Shorts. The bot uploads them in advance,
+    # so they still go online when the computer is off.
+    publish_times: list[str] = field(default_factory=lambda: _list("PUBLISH_TIMES", "12:00,16:00,20:00,23:00"))
+    timezone: str = os.getenv("TIMEZONE", "Europe/Amsterdam").strip()
     approval_mode: bool = _bool("APPROVAL_MODE", False)
 
     clip_lookback_days: int = _int("CLIP_LOOKBACK_DAYS", 2)
@@ -50,6 +53,10 @@ class Config:
     min_clip_seconds: int = _int("MIN_CLIP_SECONDS", 10)
     max_short_seconds: int = _int("MAX_SHORT_SECONDS", 60)
     font_path: str = os.getenv("FONT_PATH", "").strip()
+
+    @property
+    def uploads_per_day(self) -> int:
+        return len(self.publish_times)
 
     def missing(self) -> list[str]:
         required = {

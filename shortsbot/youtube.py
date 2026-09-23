@@ -8,6 +8,7 @@ import html
 import os
 import sys
 import webbrowser
+from datetime import datetime, timezone
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -95,13 +96,15 @@ def build_metadata(clip) -> dict:
     return {"title": title, "description": description, "tags": tags}
 
 
-def upload(video_path, clip) -> str:
+def upload(video_path, clip, publish_at: datetime | None = None) -> str:
+    """Upload a Short. With publish_at, YouTube keeps it private and publishes it at that time."""
     youtube = build("youtube", "v3", credentials=_credentials(), cache_discovery=False)
     meta = build_metadata(clip)
-    body = {
-        "snippet": {**meta, "categoryId": "20"},  # 20 = Gaming
-        "status": {"privacyStatus": config.youtube_privacy, "selfDeclaredMadeForKids": False},
-    }
+    status = {"privacyStatus": config.youtube_privacy, "selfDeclaredMadeForKids": False}
+    if publish_at and config.youtube_privacy == "public":
+        status["privacyStatus"] = "private"
+        status["publishAt"] = publish_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    body = {"snippet": {**meta, "categoryId": "20"}, "status": status}  # 20 = Gaming
     media = MediaFileUpload(str(video_path), mimetype="video/mp4", resumable=True, chunksize=8 * 1024 * 1024)
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
     response = None

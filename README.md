@@ -2,12 +2,12 @@
 
 Een Discord-bot die **zelf** YouTube Shorts maakt en uploadt van de populairste Twitch-streamers.
 
-Wat de bot doet, elke paar uur:
+Wat de bot doet:
 
-1. Hij zoekt de **meest bekeken clips** van de afgelopen 2 dagen, van je vaste streamers (Jynxzi, Kai Cenat, CaseOh, xQc, ...) **plus** de 5 grootste streamers die op dat moment live zijn.
+1. Zodra hij aan staat, maakt hij de shorts voor de komende 24 uur. Hij zoekt de **meest bekeken clips** van de afgelopen 2 dagen, van je vaste streamers (Jynxzi, Kai Cenat, CaseOh, xQc, ...) **plus** de 5 grootste streamers die op dat moment live zijn.
 2. Hij pakt de beste clip die nog niet gebruikt is (en niet 2× achter elkaar dezelfde streamer).
 3. Hij maakt er een **verticale 9:16-video** van: vage achtergrond, clip in het midden, titel bovenin, `twitch.tv/naam` onderin.
-4. Hij **uploadt** hem naar je YouTube-kanaal met titel, #shorts, tags en credits.
+4. Hij **uploadt** hem naar je YouTube-kanaal met titel, #shorts, tags en credits, ingepland op een vaste tijd (standaard 12:00, 16:00, 20:00 en 23:00). YouTube zet hem dan zelf online, ook als je computer uit staat.
 5. Hij meldt alles in je **Discord-kanaal**.
 
 ---
@@ -99,7 +99,8 @@ Wil je elke short eerst zien? Zet `APPROVAL_MODE=true` in `.env`; de bot vraagt 
 | `STREAMERS` | jynxzi, kaicenat, ... | Vaste lijst Twitch-namen |
 | `AUTO_DISCOVER_TOP` | 5 | Ook de N grootste live streamers meenemen |
 | `DISCOVER_LANGUAGE` | en | Taal van die live streamers (`nl` voor Nederlands) |
-| `UPLOADS_PER_DAY` | 4 | Shorts per dag (max 6) |
+| `PUBLISH_TIMES` | 12:00,16:00,20:00,23:00 | Tijden waarop de shorts online komen (max 6 per dag) |
+| `TIMEZONE` | Europe/Amsterdam | Tijdzone van die tijden |
 | `YOUTUBE_PRIVACY` | public | `public`, `unlisted` of `private` |
 | `CLIP_LOOKBACK_DAYS` | 2 | Hoe ver terug zoeken naar clips |
 | `MIN_CLIP_VIEWS` | 500 | Alleen clips met minstens zoveel views |

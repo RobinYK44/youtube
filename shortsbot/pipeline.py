@@ -1,6 +1,8 @@
 """Glue: pick streamers -> find the best unused clip -> render -> upload."""
 import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from . import db, editor, youtube
 from .config import DATA_DIR, config
@@ -75,16 +77,35 @@ def pick_clip() -> Clip | None:
     return candidates[0]
 
 
+def open_slots(now: datetime | None = None) -> list[datetime]:
+    """Publish times in the coming 24 hours that have no Short uploaded for them yet."""
+    now = now or datetime.now(timezone.utc)
+    tz = ZoneInfo(config.timezone)
+    local_now = now.astimezone(tz)
+    taken = db.taken_slots()
+    slots = []
+    for day in (0, 1):
+        date = (local_now + timedelta(days=day)).date()
+        for value in config.publish_times:
+            hour, minute = (int(part) for part in value.split(":"))
+            slot = datetime(date.year, date.month, date.day, hour, minute, tzinfo=tz).astimezone(timezone.utc)
+            if now < slot <= now + timedelta(hours=24) and slot.isoformat() not in taken:
+                slots.append(slot)
+    return sorted(slots)
+
+
 def render(clip: Clip) -> Path:
     return editor.make_short(clip, OUTPUT_DIR)
 
 
-def publish(clip: Clip, video: Path) -> str:
+def publish(clip: Clip, video: Path, slot: datetime | None = None) -> str:
+    """Upload now; with a slot, YouTube publishes it at that time (immediately if it is less than 15 min away)."""
+    publish_at = slot if slot and slot > datetime.now(timezone.utc) + timedelta(minutes=15) else None
     try:
-        video_id = youtube.upload(video, clip)
+        video_id = youtube.upload(video, clip, publish_at)
     except Exception:
         db.mark(clip, "failed")
         raise
-    db.mark(clip, "uploaded", video_id)
+    db.mark(clip, "uploaded", video_id, slot.isoformat() if slot else "")
     video.unlink(missing_ok=True)
     return video_id
