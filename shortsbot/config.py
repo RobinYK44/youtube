@@ -46,7 +46,9 @@ class Config:
     # so they still go online when the computer is off.
     publish_times: list[str] = field(default_factory=lambda: _list("PUBLISH_TIMES", "12:00,16:00,20:00,23:00"))
     timezone: str = os.getenv("TIMEZONE", "Europe/Amsterdam").strip()
-    approval_mode: bool = _bool("APPROVAL_MODE", False)
+    # Kiesmodus: render this many Shorts a day and let the owner pick in Discord (0 = fully automatic).
+    # Can also be changed from Discord with /kiesmodus.
+    candidates_per_day: int = _int("CANDIDATES_PER_DAY", 0)
 
     clip_lookback_days: int = _int("CLIP_LOOKBACK_DAYS", 2)
     min_clip_views: int = _int("MIN_CLIP_VIEWS", 500)

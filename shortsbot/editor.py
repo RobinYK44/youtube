@@ -103,6 +103,21 @@ def render_short(source: Path, output: Path, title: str, credit: str, work_dir: 
     return output
 
 
+def make_preview(video: Path, max_bytes: int = 9_500_000) -> Path | None:
+    """Small copy that fits Discord's upload limit, so the Short can be watched in Discord."""
+    preview = video.with_name(video.stem + "_preview.mp4")
+    cmd = [
+        ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(video),
+        "-vf", "scale=360:-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "30",
+        "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", str(preview),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 or not preview.exists() or preview.stat().st_size > max_bytes:
+        preview.unlink(missing_ok=True)
+        return None
+    return preview
+
+
 def make_short(clip, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / f"{clip.id}.mp4"

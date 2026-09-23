@@ -65,6 +65,40 @@ def find_candidates() -> list[Clip]:
     return candidates
 
 
+def pick_candidates(count: int, per_streamer: int = 3) -> list[Clip]:
+    """Most-viewed unused clips, at most `per_streamer` of each streamer for variety."""
+    picked, per = [], {}
+    for clip in find_candidates():
+        if per.get(clip.broadcaster_login, 0) < per_streamer:
+            picked.append(clip)
+            per[clip.broadcaster_login] = per.get(clip.broadcaster_login, 0) + 1
+        if len(picked) == count:
+            break
+    return picked
+
+
+def candidates_per_day() -> int:
+    value = db.get_setting("candidates_per_day")
+    return int(value) if value else config.candidates_per_day
+
+
+def clip_from_row(row) -> Clip:
+    return Clip(
+        id=row["id"],
+        url=row["url"] or f"https://clips.twitch.tv/{row['id']}",
+        title=row["title"],
+        broadcaster_login=row["broadcaster"],
+        broadcaster_name=row["broadcaster_name"] or row["broadcaster"],
+        view_count=row["views"],
+        duration=0,
+        created_at="",
+    )
+
+
+def video_path(clip_id: str) -> Path:
+    return OUTPUT_DIR / f"{clip_id}.mp4"
+
+
 def pick_clip() -> Clip | None:
     """Best clip by views, but avoid posting the same streamer twice in a row."""
     candidates = find_candidates()
@@ -96,6 +130,10 @@ def open_slots(now: datetime | None = None) -> list[datetime]:
 
 def render(clip: Clip) -> Path:
     return editor.make_short(clip, OUTPUT_DIR)
+
+
+def preview(video: Path) -> Path | None:
+    return editor.make_preview(video)
 
 
 def publish(clip: Clip, video: Path, slot: datetime | None = None) -> str:

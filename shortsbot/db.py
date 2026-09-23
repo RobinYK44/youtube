@@ -13,17 +13,18 @@ _conn.executescript(
         broadcaster TEXT,
         title TEXT,
         views INTEGER,
-        status TEXT,          -- uploaded / pending / rejected / failed / expired
+        status TEXT,          -- candidate / uploaded / rejected / failed / expired
         youtube_id TEXT,
-        updated_at TEXT,
-        publish_at TEXT       -- UTC time YouTube publishes the video; empty = immediately
+        updated_at TEXT
     );
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
     """
 )
-if "publish_at" not in [row["name"] for row in _conn.execute("PRAGMA table_info(clips)")]:
-    _conn.execute("ALTER TABLE clips ADD COLUMN publish_at TEXT DEFAULT ''")
-# Approval buttons do not survive a restart, so their slots must be freed again.
+_columns = [row["name"] for row in _conn.execute("PRAGMA table_info(clips)")]
+for _name in ("publish_at", "url", "broadcaster_name"):  # added after the first release
+    if _name not in _columns:
+        _conn.execute(f"ALTER TABLE clips ADD COLUMN {_name} TEXT DEFAULT ''")
+# Older versions had approval buttons that did not survive a restart.
 _conn.execute("UPDATE clips SET status = 'expired' WHERE status = 'pending'")
 _conn.commit()
 
@@ -38,17 +39,38 @@ def is_known(clip_id: str) -> bool:
 
 def mark(clip, status: str, youtube_id: str = "", publish_at: str = "") -> None:
     _conn.execute(
-        "INSERT OR REPLACE INTO clips (id, broadcaster, title, views, status, youtube_id, updated_at, publish_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (clip.id, clip.broadcaster_login, clip.title, clip.view_count, status, youtube_id, _now(), publish_at),
+        "INSERT OR REPLACE INTO clips"
+        " (id, broadcaster, title, views, status, youtube_id, updated_at, publish_at, url, broadcaster_name)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            clip.id, clip.broadcaster_login, clip.title, clip.view_count, status, youtube_id, _now(),
+            publish_at, clip.url, clip.broadcaster_name,
+        ),
     )
     _conn.commit()
 
 
+def get(clip_id: str) -> sqlite3.Row | None:
+    return _conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()
+
+
+def candidates() -> list[sqlite3.Row]:
+    """Rendered Shorts waiting for the owner to pick them, best first."""
+    return _conn.execute("SELECT * FROM clips WHERE status = 'candidate' ORDER BY views DESC").fetchall()
+
+
+def expire_candidates(before: str) -> list[str]:
+    ids = [
+        row["id"]
+        for row in _conn.execute("SELECT id FROM clips WHERE status = 'candidate' AND updated_at < ?", (before,))
+    ]
+    _conn.executemany("UPDATE clips SET status = 'expired' WHERE id = ?", [(i,) for i in ids])
+    _conn.commit()
+    return ids
+
+
 def taken_slots() -> set[str]:
-    rows = _conn.execute(
-        "SELECT publish_at FROM clips WHERE status IN ('uploaded', 'pending') AND publish_at != ''"
-    ).fetchall()
+    rows = _conn.execute("SELECT publish_at FROM clips WHERE status = 'uploaded' AND publish_at != ''").fetchall()
     return {row["publish_at"] for row in rows}
 
 
@@ -56,14 +78,6 @@ def scheduled_after(moment: str) -> list[sqlite3.Row]:
     return _conn.execute(
         "SELECT * FROM clips WHERE status = 'uploaded' AND publish_at > ? ORDER BY publish_at", (moment,)
     ).fetchall()
-
-
-def uploads_today() -> int:
-    today = datetime.now(timezone.utc).date().isoformat()
-    row = _conn.execute(
-        "SELECT COUNT(*) FROM clips WHERE status = 'uploaded' AND updated_at >= ?", (today,)
-    ).fetchone()
-    return row[0]
 
 
 def recent_uploads(limit: int = 5) -> list[sqlite3.Row]:

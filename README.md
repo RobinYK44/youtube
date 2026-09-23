@@ -84,13 +84,18 @@ docker run -d --restart always --name shortsbot \
 |---|---|
 | `/status` | Hoeveel shorts vandaag, wanneer de volgende komt, laatste uploads |
 | `/nu` | Meteen een short maken en uploaden |
+| `/kiesmodus aantal` | Elke dag zoveel shorts maken waar jij uit kiest (0 = volledig automatisch) |
 | `/top` | De 10 grootste live streamers op dit moment |
 | `/streamers` | Van welke streamers de bot clips zoekt |
 | `/streamer_toevoegen naam` | Streamer toevoegen (Twitch-naam) |
 | `/streamer_verwijderen naam` | Streamer weghalen |
 | `/pauze` / `/hervat` | Tijdelijk stoppen / weer verder |
 
-Wil je elke short eerst zien? Zet `APPROVAL_MODE=true` in `.env`; de bot vraagt dan met ✅/❌-knoppen of hij mag uploaden.
+### Kiesmodus: zelf de beste kiezen
+Met `/kiesmodus aantal:15` maakt de bot elke dag 15 shorts en stuurt ze met een voorbeeldvideo naar Discord.
+Klik op **✅ Kies deze** bij de shorts die je het beste vindt; ze worden ingepland op de eerstvolgende vrije tijd.
+Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met de meeste views.
+`/kiesmodus aantal:0` zet hem weer op volledig automatisch.
 
 ## Instellingen (`.env`)
 
@@ -101,6 +106,7 @@ Wil je elke short eerst zien? Zet `APPROVAL_MODE=true` in `.env`; de bot vraagt 
 | `DISCOVER_LANGUAGE` | en | Taal van die live streamers (`nl` voor Nederlands) |
 | `PUBLISH_TIMES` | 12:00,16:00,20:00,23:00 | Tijden waarop de shorts online komen (max 6 per dag) |
 | `TIMEZONE` | Europe/Amsterdam | Tijdzone van die tijden |
+| `CANDIDATES_PER_DAY` | 0 | Kiesmodus: zoveel shorts per dag maken om uit te kiezen (ook via `/kiesmodus`) |
 | `YOUTUBE_PRIVACY` | public | `public`, `unlisted` of `private` |
 | `CLIP_LOOKBACK_DAYS` | 2 | Hoe ver terug zoeken naar clips |
 | `MIN_CLIP_VIEWS` | 500 | Alleen clips met minstens zoveel views |
