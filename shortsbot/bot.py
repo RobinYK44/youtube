@@ -17,6 +17,7 @@ RETRY_AFTER = timedelta(minutes=30)
 BATCH_EVERY = timedelta(hours=20)  # kiesmodus: at most one new batch of candidates per day
 AUTO_PICK_BEFORE = timedelta(minutes=45)  # kiesmodus: pick the best one yourself if the owner did not
 CANDIDATE_MAX_AGE = timedelta(hours=48)
+PICK_AHEAD_HOURS = 48  # kiesmodus: picked Shorts may fill publish times up to two days ahead
 
 
 def _local_time(moment: datetime) -> str:
@@ -114,8 +115,8 @@ class ShortsBot(discord.Client):
             await self.auto_pick_due()
             return
         for slot in pipeline.open_slots():
-            if db.get_setting("paused") == "1":
-                return
+            if db.get_setting("paused") == "1" or pipeline.candidates_per_day():
+                return  # paused, or switched to kiesmodus halfway
             if not await self.run_cycle(slot):
                 self.retry_at = datetime.now(timezone.utc) + RETRY_AFTER
                 return
@@ -174,7 +175,7 @@ class ShortsBot(discord.Client):
         now = datetime.now(timezone.utc)
         if last and now - datetime.fromisoformat(last) < BATCH_EVERY:
             return
-        open_slots = pipeline.open_slots()
+        open_slots = pipeline.open_slots(hours=PICK_AHEAD_HOURS)
         if not open_slots:
             return
         try:
@@ -191,7 +192,7 @@ class ShortsBot(discord.Client):
 
         db.set_setting("batch_at", now.isoformat())
         await self.say(
-            f"🎞️ Ik maak **{len(clips)} shorts**. Kies er **{len(open_slots)}** uit met **✅ Kies deze**. "
+            f"🎞️ Ik maak **{len(clips)} shorts**. Kies er maximaal **{len(open_slots)}** uit met **✅ Kies deze**. "
             f"Ze komen online om {', '.join(config.publish_times)}, in de volgorde waarin je ze kiest. "
             f"Kies je niet op tijd, dan kies ik 45 minuten van tevoren zelf de beste."
         )
@@ -230,9 +231,9 @@ class ShortsBot(discord.Client):
             row = db.get(clip_id)
             if row is None or row["status"] != "candidate":
                 return False, "Deze short is al gekozen of verlopen."
-            slots = pipeline.open_slots()
+            slots = pipeline.open_slots(hours=PICK_AHEAD_HOURS)
             if not slots:
-                return False, "Alle tijden voor de komende 24 uur zijn al gevuld. Morgen kun je weer kiezen."
+                return False, "Alle tijden voor de komende 2 dagen zijn al gevuld. Morgen kun je weer kiezen."
             clip = pipeline.clip_from_row(row)
             video = pipeline.video_path(clip_id)
             if not video.exists():

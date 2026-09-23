@@ -111,19 +111,19 @@ def pick_clip() -> Clip | None:
     return candidates[0]
 
 
-def open_slots(now: datetime | None = None) -> list[datetime]:
-    """Publish times in the coming 24 hours that have no Short uploaded for them yet."""
+def open_slots(now: datetime | None = None, hours: int = 24) -> list[datetime]:
+    """Publish times in the coming `hours` that have no Short uploaded for them yet."""
     now = now or datetime.now(timezone.utc)
     tz = ZoneInfo(config.timezone)
     local_now = now.astimezone(tz)
     taken = db.taken_slots()
     slots = []
-    for day in (0, 1):
+    for day in range(hours // 24 + 1):
         date = (local_now + timedelta(days=day)).date()
         for value in config.publish_times:
             hour, minute = (int(part) for part in value.split(":"))
             slot = datetime(date.year, date.month, date.day, hour, minute, tzinfo=tz).astimezone(timezone.utc)
-            if now < slot <= now + timedelta(hours=24) and slot.isoformat() not in taken:
+            if now < slot <= now + timedelta(hours=hours) and slot.isoformat() not in taken:
                 slots.append(slot)
     return sorted(slots)
 
