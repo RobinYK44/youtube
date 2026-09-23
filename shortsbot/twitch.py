@@ -20,6 +20,7 @@ class Clip:
     created_at: str
     game_id: str = ""
     game: str = ""
+    score: float = 0.0  # viral score, see pipeline.viral_score
 
 
 class Twitch:

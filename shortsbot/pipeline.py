@@ -1,5 +1,6 @@
 """Glue: pick streamers -> find the best unused clip -> render -> upload."""
 import logging
+import statistics
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -43,16 +44,51 @@ def streamer_list() -> list[str]:
     return [login for login in logins if login not in removed]
 
 
+# Words people put in clip titles when something funny, crazy or weird happens.
+HOT_WORDS = [
+    "wtf", "what", "chat", "no way", "bro", "insane", "crazy", "omg", "bruh", "actually", "real",
+    "?!", "??", "!!", "💀", "😭", "😂", "🤣", "😱", "🔥",
+]
+
+
+def age_hours(clip: Clip, now: datetime | None = None) -> float:
+    try:
+        created = datetime.fromisoformat(clip.created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return 24.0
+    return max(1.0, ((now or datetime.now(timezone.utc)) - created).total_seconds() / 3600)
+
+
+def viral_score(clip: Clip, streamer_median: float, now: datetime | None = None) -> float:
+    """Guess how likely a clip is to do well as a Short. The bot cannot watch the video, so it uses:
+    how fast the views come in, whether the clip stands out for this streamer, title words and length."""
+    score = clip.view_count / age_hours(clip, now) ** 0.5
+    standout = min(3.0, max(0.5, clip.view_count / max(streamer_median, 1)))
+    score *= standout**0.5
+    title = clip.title.lower()
+    if youtube.moods(clip.title) or any(word in title for word in HOT_WORDS):
+        score *= 1.3
+    if 15 <= clip.duration <= 45:
+        score *= 1.15
+    elif clip.duration < 12:
+        score *= 0.85
+    return round(score, 1)
+
+
 def find_candidates() -> list[Clip]:
     logins = streamer_list()
     users = twitch.user_ids(logins)
     candidates = []
+    now = datetime.now(timezone.utc)
     for login, (user_id, name) in users.items():
         try:
             clips = twitch.top_clips(login, user_id, name, config.clip_lookback_days)
         except Exception:
             log.exception("Clips ophalen mislukt voor %s", login)
             continue
+        median = statistics.median([c.view_count for c in clips]) if clips else 1
+        for clip in clips:
+            clip.score = viral_score(clip, median, now)
         candidates += [
             c
             for c in clips
@@ -68,12 +104,12 @@ def find_candidates() -> list[Clip]:
         games = {}
     for clip in candidates:
         clip.game = games.get(clip.game_id, "")
-    candidates.sort(key=lambda c: c.view_count, reverse=True)
+    candidates.sort(key=lambda c: c.score, reverse=True)
     return candidates
 
 
 def pick_candidates(count: int, per_streamer: int = 3) -> list[Clip]:
-    """Most-viewed unused clips, at most `per_streamer` of each streamer for variety."""
+    """Highest-scoring unused clips, at most `per_streamer` of each streamer for variety."""
     picked, per = [], {}
     for clip in find_candidates():
         if per.get(clip.broadcaster_login, 0) < per_streamer:
@@ -100,6 +136,7 @@ def clip_from_row(row) -> Clip:
         duration=0,
         created_at="",
         game=row["game"] or "",
+        score=float(row["score"] or 0),
     )
 
 
@@ -108,7 +145,7 @@ def video_path(clip_id: str) -> Path:
 
 
 def pick_clip() -> Clip | None:
-    """Best clip by views, but avoid posting the same streamer twice in a row."""
+    """Highest-scoring clip, but avoid posting the same streamer twice in a row."""
     candidates = find_candidates()
     if not candidates:
         return None
