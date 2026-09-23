@@ -100,7 +100,16 @@ class ShortsBot(discord.Client):
         self.channel: discord.abc.Messageable | None = None
         self.background: asyncio.Task | None = None
         self.retry_at = datetime.min.replace(tzinfo=timezone.utc)
+        self.batch_task: asyncio.Task | None = None
         register_commands(self)
+
+    @property
+    def making_batch(self) -> bool:
+        return self.batch_task is not None and not self.batch_task.done()
+
+    def start_batch(self, coro) -> None:
+        """Make candidates in the background, so auto-picking keeps running meanwhile."""
+        self.batch_task = asyncio.create_task(coro)
 
     async def setup_hook(self):
         self.add_dynamic_items(PickButton, RejectButton)
@@ -133,11 +142,14 @@ class ShortsBot(discord.Client):
         now = datetime.now(timezone.utc)
         for clip_id in db.expire_candidates((now - CANDIDATE_MAX_AGE).isoformat()):
             pipeline.video_path(clip_id).unlink(missing_ok=True)
-        if db.get_setting("paused") == "1" or self.lock.locked() or now < self.retry_at:
+        if db.get_setting("paused") == "1" or now < self.retry_at:
             return
         if pipeline.candidates_per_day():
-            await self.make_batch_if_due()
+            if not self.making_batch and not self.lock.locked():
+                self.start_batch(self.make_batch_if_due())
             await self.auto_pick_due()
+            return
+        if self.lock.locked():
             return
         for slot in pipeline.open_slots():
             if db.get_setting("paused") == "1" or pipeline.candidates_per_day():
@@ -203,29 +215,36 @@ class ShortsBot(discord.Client):
         open_slots = pipeline.open_slots(hours=PICK_AHEAD_HOURS)
         if not open_slots:
             return
+        header = (
+            "🎞️ Ik maak **{n} shorts**. "
+            f"Kies er maximaal **{len(open_slots)}** uit met **✅ Kies deze**. "
+            f"Ze komen online om {', '.join(config.publish_times)}, in de volgorde waarin je ze kiest. "
+            "Kies je niet op tijd, dan kies ik 45 minuten van tevoren zelf de beste."
+        )
+        if await self.make_batch(pipeline.candidates_per_day(), header):
+            db.set_setting("batch_at", now.isoformat())
+
+    async def make_batch(self, count: int, header: str) -> bool:
+        """Render `count` new candidates and post them. `header` may contain {n}. False when none were found."""
         try:
-            clips = await asyncio.to_thread(pipeline.pick_candidates, pipeline.candidates_per_day())
+            clips = await asyncio.to_thread(pipeline.pick_candidates, count)
         except Exception as exc:
             log.exception("Clips zoeken mislukt")
             await self.say(f"⚠️ Clips zoeken mislukt: {_error_text(exc)}")
-            self.retry_at = now + RETRY_AFTER
-            return
+            self.retry_at = datetime.now(timezone.utc) + RETRY_AFTER
+            return False
         if not clips:
             await self.say("🔍 Geen nieuwe clips gevonden die aan de eisen voldoen. Ik probeer het later opnieuw.")
-            self.retry_at = now + RETRY_AFTER
-            return
+            self.retry_at = datetime.now(timezone.utc) + RETRY_AFTER
+            return False
 
-        db.set_setting("batch_at", now.isoformat())
-        await self.say(
-            f"🎞️ Ik maak **{len(clips)} shorts**. Kies er maximaal **{len(open_slots)}** uit met **✅ Kies deze**. "
-            f"Ze komen online om {', '.join(config.publish_times)}, in de volgorde waarin je ze kiest. "
-            f"Kies je niet op tijd, dan kies ik 45 minuten van tevoren zelf de beste."
-        )
+        await self.say(header.format(n=len(clips)))
         for number, clip in enumerate(clips, 1):
             if db.get_setting("paused") == "1":
-                return
+                return True
             await self.make_candidate(clip, number, len(clips))
         await self.say(f"👍 Alle {len(clips)} shorts staan klaar. Kies je favorieten!")
+        return True
 
     async def make_candidate(self, clip: Clip, number: int, total: int):
         async with self.lock:
@@ -339,6 +358,22 @@ def register_commands(bot: ShortsBot):
             )
         else:
             await interaction.response.send_message("✅ Kiesmodus uit: ik kies en upload weer helemaal zelf.")
+
+    @tree.command(name="meer", description="Zoek meer shorts om uit te kiezen")
+    @app_commands.describe(aantal="Hoeveel extra shorts (standaard 10)")
+    @admin
+    async def more(interaction: discord.Interaction, aantal: app_commands.Range[int, 1, 30] = 10):
+        if bot.making_batch:
+            await interaction.response.send_message("⏳ Ik ben nog bezig met shorts maken. Probeer het zo nog eens.")
+            return
+        if not pipeline.open_slots(hours=PICK_AHEAD_HOURS):
+            await interaction.response.send_message(
+                "Alle tijden voor de komende 2 dagen zijn al gevuld, dus er valt nu niks te kiezen."
+            )
+            return
+        await interaction.response.send_message(f"🔍 Ik zoek {aantal} nieuwe shorts, even geduld...")
+        header = "➕ Nog **{n} shorts** erbij, de beste die er nog zijn. Kies met **✅** of keur af met **❌**."
+        bot.start_batch(bot.make_batch(aantal, header))
 
     @tree.command(name="ingepland_wissen", description="Maak de tijden van ingeplande shorts weer vrij")
     @admin

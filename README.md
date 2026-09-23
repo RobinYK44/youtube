@@ -85,6 +85,7 @@ docker run -d --restart always --name shortsbot \
 | `/status` | Hoeveel shorts vandaag, wanneer de volgende komt, laatste uploads |
 | `/nu` | Meteen een short maken en uploaden |
 | `/kiesmodus aantal` | Elke dag zoveel shorts maken waar jij uit kiest (0 = volledig automatisch) |
+| `/meer aantal` | Kiesmodus: nu meteen extra shorts zoeken om uit te kiezen (standaard 10) |
 | `/top` | De 10 grootste live streamers op dit moment |
 | `/streamers` | Van welke streamers de bot clips zoekt |
 | `/streamer_toevoegen naam` | Streamer toevoegen (Twitch-naam) |

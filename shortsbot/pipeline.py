@@ -110,13 +110,16 @@ def find_candidates() -> list[Clip]:
 
 def pick_candidates(count: int, per_streamer: int = 3) -> list[Clip]:
     """Highest-scoring unused clips, at most `per_streamer` of each streamer for variety."""
+    found = find_candidates()
     picked, per = [], {}
-    for clip in find_candidates():
+    for clip in found:
         if per.get(clip.broadcaster_login, 0) < per_streamer:
             picked.append(clip)
             per[clip.broadcaster_login] = per.get(clip.broadcaster_login, 0) + 1
         if len(picked) == count:
-            break
+            return picked
+    # Not enough variety left: fill up with the next best clips, whoever the streamer is.
+    picked += [clip for clip in found if clip not in picked][: count - len(picked)]
     return picked
 
 
