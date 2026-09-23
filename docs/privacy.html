@@ -7,32 +7,55 @@
 <style>
   body { font-family: system-ui, sans-serif; max-width: 680px; margin: 40px auto; padding: 0 16px; line-height: 1.6; color: #222; background: #fff; }
   a { color: #0b57d0; }
+  nav a { margin-right: 16px; }
+  .yt { display: inline-block; margin: 8px 0 16px; padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; font-weight: 600; }
+  .yt span { color: #ff0000; }
 </style>
 </head>
 <body>
+<nav><a href="index.html">Home</a><a href="privacy.html">Privacy Policy</a><a href="terms.html">Terms of Service</a></nav>
 <h1>Privacy Policy</h1>
-<p>Last updated: September 2026</p>
+<p>Last updated: 23 September 2026</p>
 
-<h2>What Shortsbot does</h2>
-<p>Shortsbot is a personal tool that uploads short videos to its owner's own YouTube channel using the
-YouTube Data API. It is used only by its owner.</p>
+<h2>1. About Shortsbot</h2>
+<p>Shortsbot is a personal tool that uploads short videos to its owner's own YouTube channel. It is used only
+by its owner.</p>
 
-<h2>Data we access</h2>
-<p>Shortsbot requests one Google permission: <code>youtube.upload</code>, which lets it upload videos to the
-channel of the signed-in account. It does not read, store or share any other Google account data.</p>
+<h2>2. Use of YouTube API Services</h2>
+<p>Shortsbot uses <strong>YouTube API Services</strong>. By using Shortsbot you agree to the
+<a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a>. Google's handling of data is described
+in the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>
+(https://policies.google.com/privacy).</p>
 
-<h2>Storage</h2>
-<p>The OAuth token is stored only on the owner's own computer or server. Shortsbot keeps a local list of
-Twitch clip IDs it has already used, to avoid duplicates. No data is sold or shared with third parties.</p>
+<h2>3. Information accessed and collected</h2>
+<p>Shortsbot requests one Google OAuth permission: <code>https://www.googleapis.com/auth/youtube.upload</code>.
+It uses this permission only to upload videos, with a title, description and tags, to the signed-in user's
+own channel. Shortsbot does not read, collect or store any other Google or YouTube account data, such as
+videos, comments, subscribers or analytics.</p>
 
-<h2>Revoking access</h2>
-<p>Access can be revoked at any time at
-<a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+<h2>4. How information is used, stored and shared</h2>
+<ul>
+  <li>The OAuth token is stored only on the owner's own computer or server, in a local file.</li>
+  <li>Shortsbot keeps a local list of the IDs of the Twitch clips it has used and the IDs of the YouTube videos
+  it uploaded, to avoid duplicates.</li>
+  <li>No information is sold, shared with or disclosed to third parties.</li>
+  <li>Shortsbot does not use cookies and does not place any tracking on devices.</li>
+</ul>
 
-<h2>YouTube Terms</h2>
-<p>By using Shortsbot you agree to the <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a>
-and the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</p>
+<h2>5. Deleting your data and revoking access</h2>
+<ul>
+  <li>Access can be revoked at any time through the Google security settings page:
+  <a href="https://security.google.com/settings/security/permissions">https://security.google.com/settings/security/permissions</a>.</li>
+  <li>Deleting the local token file and the local <code>data</code> folder removes all data stored by
+  Shortsbot immediately.</li>
+  <li>Stored data is kept only while the tool is in use. If access is revoked, Shortsbot can no longer use
+  the token, and all stored data is deleted within 7 days.</li>
+</ul>
 
-<p><a href="index.html">Home</a></p>
+<h2>6. Contact</h2>
+<p>Questions can be sent through <a href="https://github.com/RobinYK44/youtube/issues">GitHub issues</a>.</p>
+
+<h2>7. Changes</h2>
+<p>If this policy changes, the updated version and date will be published on this page.</p>
 </body>
 </html>
