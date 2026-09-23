@@ -18,6 +18,8 @@ class Clip:
     view_count: int
     duration: float
     created_at: str
+    game_id: str = ""
+    game: str = ""
 
 
 class Twitch:
@@ -69,6 +71,15 @@ class Twitch:
                 result[u["login"]] = (u["id"], u["display_name"])
         return result
 
+    def game_names(self, game_ids: list[str]) -> dict[str, str]:
+        """Map game id -> game name, e.g. '509658' -> 'Just Chatting'."""
+        result = {}
+        ids = [i for i in game_ids if i]
+        for i in range(0, len(ids), 100):
+            for g in self._get("games", [("id", gid) for gid in ids[i : i + 100]]):
+                result[g["id"]] = g["name"]
+        return result
+
     def top_clips(self, login: str, user_id: str, name: str, days: int, first: int = 20) -> list[Clip]:
         """Most-viewed clips of one streamer in the last `days` days."""
         now = datetime.now(timezone.utc)
@@ -91,6 +102,7 @@ class Twitch:
                 view_count=c["view_count"],
                 duration=float(c["duration"]),
                 created_at=c["created_at"],
+                game_id=c.get("game_id", ""),
             )
             for c in data
         ]

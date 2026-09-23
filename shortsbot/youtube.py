@@ -6,6 +6,7 @@ This creates youtube_token.json; copy it to wherever the bot runs.
 """
 import html
 import os
+import re
 import sys
 import webbrowser
 from datetime import datetime, timezone
@@ -19,6 +20,49 @@ from googleapiclient.http import MediaFileUpload
 from .config import DATA_DIR, config
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+
+# Hashtags are guessed from the clip title, the streamer and the game: the bot cannot watch the video,
+# so the mood (funny, scary, ...) comes from words in the title. General tags fill up the rest.
+MOODS = {
+    "funny": ["lol", "lmao", "lmfao", "funny", "haha", "joke", "prank", "laugh", "crying", "😂", "🤣", "💀"],
+    "rage": ["rage", "mad", "angry", "tilt", "scream", "yell", "😡", "🤬"],
+    "scary": ["scary", "scared", "horror", "jumpscare", "jump scare", "ghost", "creepy", "😱"],
+    "clutch": ["clutch", "insane", "crazy", "cracked", "1v", "ace", "no way", "impossible", "goat", "🔥"],
+    "fail": ["fail", "fell", "oops", "bruh", "rip", "died", "choke", "throw"],
+    "wholesome": ["wholesome", "cute", "sweet", "love", "❤", "🥹"],
+    "music": ["sing", "song", "music", "dance", "rap", "🎵", "🎶"],
+}
+FILLER = ["funny", "twitch", "streamer", "viral", "clips", "gaming"]
+
+
+def _hashtag(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
+def moods(title: str) -> list[str]:
+    lowered = title.lower()
+    found = []
+    for mood, words in MOODS.items():
+        for word in words:
+            # Whole words for letters ("rip" not in "trip"); emoji can be anywhere.
+            pattern = rf"(?<!\w){re.escape(word)}" if word[0].isalnum() else re.escape(word)
+            if re.search(pattern, lowered):
+                found.append(mood)
+                break
+    return found
+
+
+def make_hashtags(clip, minimum: int = 6, maximum: int = 8) -> list[str]:
+    """Hashtags without '#', most specific first. Always starts with 'shorts'."""
+    found = moods(clip.title)
+    tags = ["shorts", _hashtag(clip.broadcaster_name), _hashtag(getattr(clip, "game", "") or ""), *found]
+    for filler in FILLER:
+        if found and filler == "funny":
+            continue  # a scary or rage clip should not also be called funny
+        if len([t for t in dict.fromkeys(tags) if t]) >= minimum:
+            break
+        tags.append(filler)
+    return [t for t in dict.fromkeys(tags) if t][:maximum]
 
 
 def _open_login_page(url: str) -> None:
@@ -82,7 +126,7 @@ def _credentials() -> Credentials:
 
 
 def build_metadata(clip) -> dict:
-    hashtag = "".join(ch for ch in clip.broadcaster_name if ch.isalnum())
+    hashtags = make_hashtags(clip)
     suffix = f" | {clip.broadcaster_name} #shorts"
     title = clip.title.strip() or f"{clip.broadcaster_name} moment"
     title = title[: 100 - len(suffix)].rstrip() + suffix
@@ -90,9 +134,11 @@ def build_metadata(clip) -> dict:
         f"{clip.title}\n\n"
         f"Credits: {clip.broadcaster_name} — https://twitch.tv/{clip.broadcaster_login}\n"
         f"Originele clip: {clip.url}\n\n"
-        f"#shorts #{hashtag} #twitch #streamer #clips"
+        + " ".join(f"#{tag}" for tag in hashtags)
     )
-    tags = [clip.broadcaster_name, clip.broadcaster_login, "shorts", "twitch", "streamer", "clips", "funny"]
+    tags = list(dict.fromkeys([clip.broadcaster_name, clip.broadcaster_login, *hashtags, "twitch", "clips"]))
+    if getattr(clip, "game", ""):
+        tags.append(clip.game)
     return {"title": title, "description": description, "tags": tags}
 
 

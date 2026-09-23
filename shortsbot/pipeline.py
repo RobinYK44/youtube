@@ -61,6 +61,13 @@ def find_candidates() -> list[Clip]:
             and c.duration <= config.max_short_seconds + 1
             and not db.is_known(c.id)
         ]
+    try:
+        games = twitch.game_names(sorted({c.game_id for c in candidates}))
+    except Exception:
+        log.exception("Gamenamen ophalen mislukt")
+        games = {}
+    for clip in candidates:
+        clip.game = games.get(clip.game_id, "")
     candidates.sort(key=lambda c: c.view_count, reverse=True)
     return candidates
 
@@ -92,6 +99,7 @@ def clip_from_row(row) -> Clip:
         view_count=row["views"],
         duration=0,
         created_at="",
+        game=row["game"] or "",
     )
 
 

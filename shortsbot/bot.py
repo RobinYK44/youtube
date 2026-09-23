@@ -10,6 +10,7 @@ from discord.ext import tasks
 
 from . import db, pipeline
 from .config import config
+from .youtube import make_hashtags
 from .twitch import Clip
 
 log = logging.getLogger("shortsbot")
@@ -217,7 +218,7 @@ class ShortsBot(discord.Client):
         view.add_item(PickButton(clip.id))
         text = (
             f"🎬 **{number}/{total}** · **{clip.title}** — {clip.broadcaster_name} "
-            f"({clip.view_count:,} views)\n<{clip.url}>"
+            f"({clip.view_count:,} views)\n{' '.join('#' + t for t in make_hashtags(clip))}\n<{clip.url}>"
         )
         try:
             await self.say(text, file=discord.File(preview) if preview else None, view=view)
