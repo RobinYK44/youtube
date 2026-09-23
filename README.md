@@ -90,6 +90,7 @@ docker run -d --restart always --name shortsbot \
 | `/streamer_toevoegen naam` | Streamer toevoegen (Twitch-naam) |
 | `/streamer_verwijderen naam` | Streamer weghalen |
 | `/pauze` / `/hervat` | Tijdelijk stoppen / weer verder |
+| `/ingepland_wissen` | Tijden van ingeplande shorts weer vrijmaken (verwijder de video's zelf in YouTube Studio) |
 
 ### Kiesmodus: zelf de beste kiezen
 Met `/kiesmodus aantal:15` maakt de bot elke dag 15 shorts en stuurt ze met een voorbeeldvideo naar Discord.

@@ -82,6 +82,14 @@ def scheduled_after(moment: str) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def cancel_scheduled_after(moment: str) -> list[sqlite3.Row]:
+    """Free the publish times of Shorts that are scheduled but not online yet."""
+    rows = scheduled_after(moment)
+    _conn.executemany("UPDATE clips SET status = 'cancelled' WHERE id = ?", [(r["id"],) for r in rows])
+    _conn.commit()
+    return rows
+
+
 def recent_uploads(limit: int = 5) -> list[sqlite3.Row]:
     return _conn.execute(
         "SELECT * FROM clips WHERE status = 'uploaded' ORDER BY updated_at DESC LIMIT ?", (limit,)

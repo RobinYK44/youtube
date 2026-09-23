@@ -340,6 +340,23 @@ def register_commands(bot: ShortsBot):
         else:
             await interaction.response.send_message("✅ Kiesmodus uit: ik kies en upload weer helemaal zelf.")
 
+    @tree.command(name="ingepland_wissen", description="Maak de tijden van ingeplande shorts weer vrij")
+    @admin
+    async def clear_scheduled(interaction: discord.Interaction):
+        rows = db.cancel_scheduled_after(datetime.now(timezone.utc).isoformat())
+        if not rows:
+            await interaction.response.send_message("Er staat niks ingepland.")
+            return
+        links = "\n".join(
+            f"• {_local_time(datetime.fromisoformat(r['publish_at']))} — https://studio.youtube.com/video/{r['youtube_id']}/edit"
+            for r in rows
+        )
+        bot.retry_at = datetime.min.replace(tzinfo=timezone.utc)
+        await interaction.response.send_message(
+            f"🗑️ {len(rows)} tijden zijn weer vrij. **Verwijder deze video's zelf in YouTube Studio**, "
+            f"anders komen ze alsnog online:\n{links}"
+        )
+
     @tree.command(name="nu", description="Maak en upload direct een nieuwe short")
     @admin
     async def now(interaction: discord.Interaction):
