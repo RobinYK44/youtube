@@ -44,7 +44,8 @@ class Config:
 
     # Times (local, see TIMEZONE) at which YouTube publishes the Shorts. The bot uploads them in advance,
     # so they still go online when the computer is off.
-    publish_times: list[str] = field(default_factory=lambda: _list("PUBLISH_TIMES", "12:00,16:00,20:00,23:00"))
+    # Default: afternoon and evening in the US (Eastern time), where most viewers of English clips live.
+    publish_times: list[str] = field(default_factory=lambda: _list("PUBLISH_TIMES", "18:00,21:00,00:00,02:00"))
     timezone: str = os.getenv("TIMEZONE", "Europe/Amsterdam").strip()
     # Kiesmodus: render this many Shorts a day and let the owner pick in Discord (0 = fully automatic).
     # Can also be changed from Discord with /kiesmodus.

@@ -173,6 +173,28 @@ def compilation_clip(parts: list[Clip]) -> Clip:
     )
 
 
+def publish_times() -> list[str]:
+    """Times (HH:MM, local) at which Shorts go online. Can be changed from Discord with /tijden."""
+    value = db.get_setting("publish_times")
+    return value.split(",") if value else config.publish_times
+
+
+def parse_times(text: str) -> list[str] | None:
+    """'18:00, 21:00,0:00' -> ['00:00', '18:00', '21:00']; None when something is not a valid time."""
+    times = []
+    for part in text.replace(" ", ",").split(","):
+        if not part:
+            continue
+        hour, sep, minute = part.partition(":")
+        if not (hour.isdigit() and (not sep or minute.isdigit())):
+            return None
+        h, m = int(hour), int(minute or 0)
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            return None
+        times.append(f"{h:02d}:{m:02d}")
+    return sorted(set(times)) or None
+
+
 def candidates_per_day() -> int:
     value = db.get_setting("candidates_per_day")
     return int(value) if value else config.candidates_per_day
@@ -220,7 +242,7 @@ def open_slots(now: datetime | None = None, hours: int = 24) -> list[datetime]:
     slots = []
     for day in range(hours // 24 + 1):
         date = (local_now + timedelta(days=day)).date()
-        for value in config.publish_times:
+        for value in publish_times():
             hour, minute = (int(part) for part in value.split(":"))
             slot = datetime(date.year, date.month, date.day, hour, minute, tzinfo=tz).astimezone(timezone.utc)
             if now < slot <= now + timedelta(hours=hours) and slot.isoformat() not in taken:

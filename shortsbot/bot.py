@@ -126,7 +126,7 @@ class ShortsBot(discord.Client):
         await self.tree.sync(guild=guild)
         log.info("Ingelogd als %s, kanaal #%s", self.user, self.channel)
         await self.say(
-            f"🤖 Shorts-bot online, {_mode_text()}. Shorts komen online om {', '.join(config.publish_times)}. "
+            f"🤖 Shorts-bot online, {_mode_text()}. Shorts komen online om {', '.join(pipeline.publish_times())}. "
             "Typ `/status` voor info."
         )
 
@@ -218,7 +218,7 @@ class ShortsBot(discord.Client):
         header = (
             "🎞️ Ik maak **{n} shorts**. "
             f"Kies er maximaal **{len(open_slots)}** uit met **✅ Kies deze**. "
-            f"Ze komen online om {', '.join(config.publish_times)}, in de volgorde waarin je ze kiest. "
+            f"Ze komen online om {', '.join(pipeline.publish_times())}, in de volgorde waarin je ze kiest. "
             "Kies je niet op tijd, dan kies ik 45 minuten van tevoren zelf de beste."
         )
         if await self.make_batch(pipeline.candidates_per_day(), header):
@@ -363,7 +363,7 @@ def register_commands(bot: ShortsBot):
         await interaction.response.send_message(
             f"**Status:** {'⏸️ gepauzeerd' if paused else '▶️ actief'}\n"
             f"**Modus:** {_mode_text()}\n"
-            f"**Online-tijden:** {', '.join(config.publish_times)} ({ZoneInfo(config.timezone).key})\n"
+            f"**Online-tijden:** {', '.join(pipeline.publish_times())} ({ZoneInfo(config.timezone).key})\n"
             f"{waiting}"
             f"**Ingepland:**\n{planned or 'niks'}\n"
             f"**Laatste uploads:**\n{recent or 'nog geen'}"
@@ -427,6 +427,24 @@ def register_commands(bot: ShortsBot):
         await interaction.response.send_message(
             f"🗑️ {len(rows)} tijden zijn weer vrij. **Verwijder deze video's zelf in YouTube Studio**, "
             f"anders komen ze alsnog online:\n{links}"
+        )
+
+    @tree.command(name="tijden", description="Kies op welke tijden de shorts online komen")
+    @app_commands.describe(tijden="Nederlandse tijden, bijv. 18:00, 21:00, 00:00, 02:00 (max 6)")
+    @admin
+    async def times(interaction: discord.Interaction, tijden: str):
+        parsed = pipeline.parse_times(tijden)
+        if not parsed:
+            await interaction.response.send_message("Dat snap ik niet. Typ het zo: `18:00, 21:00, 00:00, 02:00`")
+            return
+        if len(parsed) > 6:
+            await interaction.response.send_message("Maximaal 6 tijden per dag, anders is de YouTube-limiet op.")
+            return
+        db.set_setting("publish_times", ",".join(parsed))
+        bot.retry_at = datetime.min.replace(tzinfo=timezone.utc)
+        await interaction.response.send_message(
+            f"🕒 Shorts komen nu online om **{', '.join(parsed)}** (Nederlandse tijd). "
+            "Shorts die al ingepland staan houden hun oude tijd."
         )
 
     @tree.command(name="nu", description="Maak en upload direct een nieuwe short")

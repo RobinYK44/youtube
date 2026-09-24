@@ -7,7 +7,7 @@ Wat de bot doet:
 1. Zodra hij aan staat, maakt hij de shorts voor de komende 24 uur. Hij zoekt de **meest bekeken clips** van de afgelopen 2 dagen, van je vaste streamers (Jynxzi, Kai Cenat, CaseOh, xQc, ...) **plus** de 5 grootste streamers die op dat moment live zijn.
 2. Hij pakt de clip met de hoogste **viral-score** die nog niet gebruikt is (en niet 2× achter elkaar dezelfde streamer). De score kijkt naar hoe snel de views binnenkomen, of de clip uitschiet voor die streamer, woorden in de titel ("LMAO", "WTF", "no way", 💀 ...) en de lengte.
 3. Hij maakt er een **verticale 9:16-video** van: vage achtergrond, clip in het midden, titel bovenin, `twitch.tv/naam` onderin.
-4. Hij **uploadt** hem naar je YouTube-kanaal met titel, #shorts, tags en credits, ingepland op een vaste tijd (standaard 12:00, 16:00, 20:00 en 23:00). YouTube zet hem dan zelf online, ook als je computer uit staat.
+4. Hij **uploadt** hem naar je YouTube-kanaal met titel, #shorts, tags en credits, ingepland op een vaste tijd (standaard 18:00, 21:00, 00:00 en 02:00: middag en avond in Amerika). YouTube zet hem dan zelf online, ook als je computer uit staat.
 5. Hij meldt alles in je **Discord-kanaal**.
 
 ---
@@ -91,6 +91,7 @@ docker run -d --restart always --name shortsbot \
 | `/streamers` | Van welke streamers de bot clips zoekt |
 | `/streamer_toevoegen naam` | Streamer toevoegen (Twitch-naam) |
 | `/streamer_verwijderen naam` | Streamer weghalen |
+| `/tijden 18:00, 21:00, 00:00, 02:00` | Kiezen op welke tijden de shorts online komen |
 | `/pauze` / `/hervat` | Tijdelijk stoppen / weer verder |
 | `/ingepland_wissen` | Tijden van ingeplande shorts weer vrijmaken (verwijder de video's zelf in YouTube Studio) |
 
@@ -108,7 +109,7 @@ Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met 
 | `STREAMERS` | jynxzi, kaicenat, ... | Vaste lijst Twitch-namen |
 | `AUTO_DISCOVER_TOP` | 5 | Ook de N grootste live streamers meenemen |
 | `DISCOVER_LANGUAGE` | en | Taal van die live streamers (`nl` voor Nederlands) |
-| `PUBLISH_TIMES` | 12:00,16:00,20:00,23:00 | Tijden waarop de shorts online komen (max 6 per dag) |
+| `PUBLISH_TIMES` | 18:00,21:00,00:00,02:00 | Tijden waarop de shorts online komen (max 6 per dag); middag en avond in Amerika. Ook via `/tijden` |
 | `TIMEZONE` | Europe/Amsterdam | Tijdzone van die tijden |
 | `CANDIDATES_PER_DAY` | 0 | Kiesmodus: zoveel shorts per dag maken om uit te kiezen (ook via `/kiesmodus`) |
 | `YOUTUBE_PRIVACY` | public | `public`, `unlisted` of `private` |
