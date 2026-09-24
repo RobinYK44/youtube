@@ -78,9 +78,14 @@ docker run -d --restart always --name shortsbot \
 
 ---
 
-## TikTok (optioneel)
+## TikTok
 
-De bot kan elke short ook op TikTok zetten. TikTok kan niet inplannen, dus de bot post op de gekozen tijd zelf;
+**Standaard (handmatig):** na elke YouTube-upload stuurt de bot in Discord een TikTok-versie van de video
+(720p, klein genoeg voor Discord) en daaronder de tekst met hashtags. Sla de video op je telefoon op, post hem in de
+TikTok-app en plak de tekst. Voeg in TikTok zelf een trending geluidje toe; dat geeft extra bereik.
+Uitzetten kan met `/tiktok aan:False`.
+
+**Automatisch (optioneel):** de bot kan ook zelf op TikTok posten. TikTok kan niet inplannen, dus de bot post op de gekozen tijd zelf;
 staat je computer dan uit, dan post hij de gemiste shorts zodra hij weer aan staat (minstens 45 minuten ertussen).
 Tot TikTok je app goedkeurt, zijn de TikTok-posts alleen voor jou zichtbaar.
 
@@ -111,7 +116,7 @@ Tot TikTok je app goedkeurt, zijn de TikTok-posts alleen voor jou zichtbaar.
 | `/streamer_toevoegen naam` | Streamer toevoegen (Twitch-naam) |
 | `/streamer_verwijderen naam` | Streamer weghalen |
 | `/tijden 18:00, 21:00, 00:00, 02:00` | Kiezen op welke tijden de shorts online komen |
-| `/tiktok aan` | Posten op TikTok aan- of uitzetten |
+| `/tiktok aan` | TikTok-versies (of automatisch posten) aan- of uitzetten |
 | `/pauze` / `/hervat` | Tijdelijk stoppen / weer verder |
 | `/ingepland_wissen` | Tijden van ingeplande shorts weer vrijmaken (verwijder de video's zelf in YouTube Studio) |
 

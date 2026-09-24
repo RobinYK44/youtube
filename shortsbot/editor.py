@@ -205,6 +205,22 @@ def make_preview(video: Path, max_bytes: int = 9_500_000) -> Path | None:
     return preview
 
 
+def make_tiktok_version(video: Path, max_bytes: int = 9_500_000) -> Path | None:
+    """720x1280 copy under Discord's 10 MB limit, to save on a phone and post to TikTok by hand."""
+    out = video.with_name(video.stem + "_tiktok.mp4")
+    for crf, audio in ((24, "128k"), (29, "96k"), (33, "64k")):
+        cmd = [
+            ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(video),
+            "-vf", "scale=720:1280", "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
+            "-c:a", "aac", "-b:a", audio, "-movflags", "+faststart", str(out),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0 and out.exists() and out.stat().st_size <= max_bytes:
+            return out
+    out.unlink(missing_ok=True)
+    return None
+
+
 def make_short(clip, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / f"{clip.id}.mp4"

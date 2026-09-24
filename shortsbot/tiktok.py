@@ -139,11 +139,9 @@ def _chunks(size: int) -> tuple[int, int]:
 
 
 def caption(clip, hashtags: list[str]) -> str:
-    tags = ["fyp", "foryou", *(t for t in hashtags if t != "shorts")]
-    names = ", ".join(p.broadcaster_name for p in clip.parts) if clip.parts else clip.broadcaster_name
-    credit = " ".join(f"twitch.tv/{p.broadcaster_login}" for p in (clip.parts or [clip]))
-    text = f"{clip.title} | {names}\n\nCredits: {credit}\n\n" + " ".join(f"#{t}" for t in dict.fromkeys(tags))
-    return text[:2200]
+    from .youtube import tiktok_caption
+
+    return tiktok_caption(clip)
 
 
 def upload(video_path, clip, hashtags: list[str]) -> tuple[str, bool]:

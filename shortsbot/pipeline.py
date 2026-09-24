@@ -260,6 +260,10 @@ def preview(video: Path) -> Path | None:
     return editor.make_preview(video)
 
 
+def tiktok_version(video: Path) -> Path | None:
+    return editor.make_tiktok_version(video)
+
+
 def publish(clip: Clip, video: Path, slot: datetime | None = None) -> str:
     """Upload now; with a slot, YouTube publishes it at that time (immediately if it is less than 15 min away)."""
     publish_at = slot if slot and slot > datetime.now(timezone.utc) + timedelta(minutes=15) else None

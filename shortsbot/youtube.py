@@ -73,6 +73,15 @@ def make_hashtags(clip, minimum: int = 6, maximum: int = 8) -> list[str]:
     return [t for t in dict.fromkeys(tags) if t][:maximum]
 
 
+def tiktok_caption(clip) -> str:
+    """Text for TikTok: title, credits and hashtags, with #fyp instead of #shorts."""
+    tags = ["fyp", "foryou", *(t for t in make_hashtags(clip) if t != "shorts")]
+    names = ", ".join(p.broadcaster_name for p in clip.parts) if clip.parts else clip.broadcaster_name
+    credit = " ".join(f"twitch.tv/{p.broadcaster_login}" for p in (clip.parts or [clip]))
+    text = f"{clip.title} | {names}\n\nCredits: {credit}\n\n" + " ".join(f"#{t}" for t in dict.fromkeys(tags))
+    return text[:2200]
+
+
 def _open_login_page(url: str, service: str = "YouTube") -> None:
     """Open the login URL via a local HTML file: long URLs break when copied from a terminal."""
     page = DATA_DIR / "login.html"

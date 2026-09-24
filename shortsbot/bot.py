@@ -10,7 +10,7 @@ from discord.ext import tasks
 
 from . import db, pipeline
 from .config import config
-from .youtube import make_hashtags
+from .youtube import make_hashtags, tiktok_caption
 from .twitch import Clip
 
 log = logging.getLogger("shortsbot")
@@ -227,15 +227,36 @@ class ShortsBot(discord.Client):
         return ok
 
     async def _publish(self, clip: Clip, video, slot: datetime | None) -> tuple[bool, str]:
+        manual_tiktok = not pipeline.tiktok_enabled() and db.get_setting("tiktok_paused") != "1"
+        tiktok_copy = await asyncio.to_thread(pipeline.tiktok_version, video) if manual_tiktok else None
         try:
             video_id = await asyncio.to_thread(pipeline.publish, clip, video, slot)
         except Exception as exc:
             log.exception("Upload mislukt")
+            if tiktok_copy:
+                tiktok_copy.unlink(missing_ok=True)
             return False, f"⚠️ Upload mislukt: {_error_text(exc)}"
+        if tiktok_copy:
+            await self.send_tiktok_copy(clip, tiktok_copy, slot)
         link = f"https://youtube.com/shorts/{video_id}"
         if slot and slot > datetime.now(timezone.utc) + timedelta(minutes=15):
             return True, f"📅 Geüpload! Komt online op {_local_time(slot)}: {link}"
         return True, f"✅ Geüpload! {link}"
+
+    async def send_tiktok_copy(self, clip: Clip, video, slot: datetime | None):
+        """The video for TikTok plus its text in a separate message, so it is easy to copy on a phone."""
+        when = f"rond {_local_time(slot)}" if slot and slot > datetime.now(timezone.utc) else "wanneer je wilt"
+        try:
+            await self.say(
+                f"📱 **TikTok-versie** van **{clip.title}**. Sla de video op en post hem {when}. "
+                "Tip: voeg in TikTok een trending geluidje toe (zacht). De tekst om te kopiëren staat hieronder 👇",
+                file=discord.File(video),
+            )
+            await self.say(tiktok_caption(clip))
+        except Exception:
+            log.exception("TikTok-versie sturen mislukt")
+        finally:
+            video.unlink(missing_ok=True)
 
     # ---- kiesmodus --------------------------------------------------------------------------------------
 
@@ -393,7 +414,9 @@ def register_commands(bot: ShortsBot):
         )
         waiting = f"**Klaar om te kiezen:** {len(db.candidates())}\n" if pipeline.candidates_per_day() else ""
         if pipeline.tiktok_enabled():
-            waiting += f"**TikTok:** aan, {db.tiktok_queue_size()} in de wachtrij\n"
+            waiting += f"**TikTok:** automatisch, {db.tiktok_queue_size()} in de wachtrij\n"
+        elif db.get_setting("tiktok_paused") != "1":
+            waiting += "**TikTok:** je krijgt na elke upload de TikTok-versie in Discord\n"
         await interaction.response.send_message(
             f"**Status:** {'⏸️ gepauzeerd' if paused else '▶️ actief'}\n"
             f"**Modus:** {_mode_text()}\n"
@@ -483,17 +506,19 @@ def register_commands(bot: ShortsBot):
             "Shorts die al ingepland staan houden hun oude tijd."
         )
 
-    @tree.command(name="tiktok", description="Zet het posten op TikTok aan of uit")
+    @tree.command(name="tiktok", description="TikTok-versies van je shorts aan of uit")
     @app_commands.describe(aan="Aan of uit")
     @admin
     async def tiktok_toggle(interaction: discord.Interaction, aan: bool):
         db.set_setting("tiktok_paused", "0" if aan else "1")
-        if aan and not pipeline.tiktok_enabled():
+        if not aan:
+            await interaction.response.send_message("🎵 TikTok staat uit.")
+        elif pipeline.tiktok_enabled():
+            await interaction.response.send_message("🎵 TikTok staat aan: ik post de shorts zelf op TikTok.")
+        else:
             await interaction.response.send_message(
-                "TikTok is nog niet gekoppeld. Draai op je pc eerst `python -m shortsbot.tiktok auth`."
+                "🎵 TikTok staat aan: na elke upload stuur ik je de TikTok-versie en de tekst om te plakken."
             )
-            return
-        await interaction.response.send_message("🎵 TikTok staat aan." if aan else "🎵 TikTok staat uit.")
 
     @tree.command(name="nu", description="Maak en upload direct een nieuwe short")
     @admin
