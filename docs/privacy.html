@@ -15,7 +15,7 @@
 <body>
 <nav><a href="index.html">Home</a><a href="privacy.html">Privacy Policy</a><a href="terms.html">Terms of Service</a></nav>
 <h1>Privacy Policy</h1>
-<p>Last updated: 23 September 2026</p>
+<p>Last updated: 24 September 2026</p>
 
 <h2>1. About Shortsbot</h2>
 <p>Shortsbot is a personal tool that uploads short videos to its owner's own YouTube channel. It is used only
@@ -27,6 +27,12 @@ by its owner.</p>
 in the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>
 (https://policies.google.com/privacy).</p>
 
+<h2>2b. Use of the TikTok API</h2>
+<p>Shortsbot can also post the same Shorts to the owner's own TikTok account through the TikTok Content Posting
+API. It requests the TikTok scopes <code>user.info.basic</code> (to know which account to post to) and
+<code>video.publish</code> (to post videos). See the <a href="https://www.tiktok.com/legal/privacy-policy">TikTok
+Privacy Policy</a>.</p>
+
 <h2>3. Information accessed and collected</h2>
 <p>Shortsbot requests one Google OAuth permission: <code>https://www.googleapis.com/auth/youtube.upload</code>.
 It uses this permission only to upload videos, with a title, description and tags, to the signed-in user's
@@ -35,7 +41,7 @@ videos, comments, subscribers or analytics.</p>
 
 <h2>4. How information is used, stored and shared</h2>
 <ul>
-  <li>The OAuth token is stored only on the owner's own computer or server, in a local file.</li>
+  <li>The OAuth tokens (Google and TikTok) are stored only on the owner's own computer or server, in local files.</li>
   <li>Shortsbot keeps a local list of the IDs of the Twitch clips it has used and the IDs of the YouTube videos
   it uploaded, to avoid duplicates.</li>
   <li>No information is sold, shared with or disclosed to third parties.</li>
@@ -46,7 +52,8 @@ videos, comments, subscribers or analytics.</p>
 <ul>
   <li>Access can be revoked at any time through the Google security settings page:
   <a href="https://security.google.com/settings/security/permissions">https://security.google.com/settings/security/permissions</a>.</li>
-  <li>Deleting the local token file and the local <code>data</code> folder removes all data stored by
+  <li>TikTok access can be revoked in the TikTok app under Settings and privacy → Security → Apps and services.</li>
+  <li>Deleting the local token files and the local <code>data</code> folder removes all data stored by
   Shortsbot immediately.</li>
   <li>Stored data is kept only while the tool is in use. If access is revoked, Shortsbot can no longer use
   the token, and all stored data is deleted within 7 days.</li>

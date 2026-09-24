@@ -21,7 +21,7 @@ _conn.executescript(
     """
 )
 _columns = [row["name"] for row in _conn.execute("PRAGMA table_info(clips)")]
-for _name in ("publish_at", "url", "broadcaster_name", "game", "score", "parts"):  # added after the first release
+for _name in ("publish_at", "url", "broadcaster_name", "game", "score", "parts", "tiktok_status", "tiktok_id"):  # added after the first release
     if _name not in _columns:
         _conn.execute(f"ALTER TABLE clips ADD COLUMN {_name} TEXT DEFAULT ''")
 # Older versions had approval buttons that did not survive a restart.
@@ -86,9 +86,30 @@ def scheduled_after(moment: str) -> list[sqlite3.Row]:
 def cancel_scheduled_after(moment: str) -> list[sqlite3.Row]:
     """Free the publish times of Shorts that are scheduled but not online yet."""
     rows = scheduled_after(moment)
-    _conn.executemany("UPDATE clips SET status = 'cancelled' WHERE id = ?", [(r["id"],) for r in rows])
+    _conn.executemany(
+        "UPDATE clips SET status = 'cancelled', tiktok_status = '' WHERE id = ?", [(r["id"],) for r in rows]
+    )
     _conn.commit()
     return rows
+
+
+def set_tiktok(clip_id: str, status: str, tiktok_id: str = "") -> None:
+    """status: queued / posted / private / failed"""
+    _conn.execute("UPDATE clips SET tiktok_status = ?, tiktok_id = ? WHERE id = ?", (status, tiktok_id, clip_id))
+    _conn.commit()
+
+
+def tiktok_due(moment: str) -> list[sqlite3.Row]:
+    """Shorts waiting for TikTok whose publish time has come, oldest first."""
+    return _conn.execute(
+        "SELECT * FROM clips WHERE tiktok_status = 'queued' AND (publish_at = '' OR publish_at <= ?)"
+        " ORDER BY publish_at",
+        (moment,),
+    ).fetchall()
+
+
+def tiktok_queue_size() -> int:
+    return _conn.execute("SELECT COUNT(*) FROM clips WHERE tiktok_status = 'queued'").fetchone()[0]
 
 
 def recent_uploads(limit: int = 5) -> list[sqlite3.Row]:

@@ -4,3 +4,4 @@ youtube_token.json
 data/
 .git/
 __pycache__/
+tiktok_token.json

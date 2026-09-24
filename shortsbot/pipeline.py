@@ -269,5 +269,36 @@ def publish(clip: Clip, video: Path, slot: datetime | None = None) -> str:
         db.mark(clip, "failed")
         raise
     db.mark(clip, "uploaded", video_id, slot.isoformat() if slot else "")
-    video.unlink(missing_ok=True)
+    if tiktok_enabled():
+        db.set_tiktok(clip.id, "queued")  # posted at its publish time by the bot, see post_tiktok
+    else:
+        video.unlink(missing_ok=True)
     return video_id
+
+
+def tiktok_enabled() -> bool:
+    try:
+        from . import tiktok
+    except ImportError:  # an older update.bat did not download tiktok.py
+        return False
+    return tiktok.enabled() and db.get_setting("tiktok_paused") != "1"
+
+
+def post_tiktok(row) -> tuple[str, bool]:
+    """Post one queued Short to TikTok. Returns (publish_id, public)."""
+    from . import tiktok
+
+    clip = clip_from_row(row)
+    video = video_path(clip.id)
+    if not video.exists():
+        db.set_tiktok(clip.id, "failed")
+        raise RuntimeError("videobestand niet meer gevonden")
+    try:
+        publish_id, public = tiktok.upload(video, clip, youtube.make_hashtags(clip))
+    except Exception:
+        db.set_tiktok(clip.id, "failed")
+        video.unlink(missing_ok=True)
+        raise
+    db.set_tiktok(clip.id, "posted" if public else "private", publish_id)
+    video.unlink(missing_ok=True)
+    return publish_id, public

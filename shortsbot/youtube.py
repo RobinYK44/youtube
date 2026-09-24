@@ -73,18 +73,18 @@ def make_hashtags(clip, minimum: int = 6, maximum: int = 8) -> list[str]:
     return [t for t in dict.fromkeys(tags) if t][:maximum]
 
 
-def _open_login_page(url: str) -> None:
+def _open_login_page(url: str, service: str = "YouTube") -> None:
     """Open the login URL via a local HTML file: long URLs break when copied from a terminal."""
     page = DATA_DIR / "login.html"
     page.write_text(
-        '<!doctype html><meta charset="utf-8"><title>Inloggen bij YouTube</title>'
+        f'<!doctype html><meta charset="utf-8"><title>Inloggen bij {service}</title>'
         '<body style="font-family:sans-serif;text-align:center;margin-top:80px">'
-        "<h1>Shortsbot: inloggen bij YouTube</h1>"
+        f"<h1>Shortsbot: inloggen bij {service}</h1>"
         f'<p><a href="{html.escape(url)}" style="font-size:24px">Klik hier om in te loggen</a></p>'
         f'<script>location.href = {url!r};</script>',
         encoding="utf-8",
     )
-    print("Je browser opent nu het Google-inlogscherm.")
+    print(f"Je browser opent nu het inlogscherm van {service}.")
     print(f"Gebeurt er niks? Dubbelklik dan op dit bestand: {page}")
     try:
         if hasattr(os, "startfile"):

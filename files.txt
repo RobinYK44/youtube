@@ -1,0 +1,13 @@
+main.py
+requirements.txt
+start.bat
+files.txt
+shortsbot/__init__.py
+shortsbot/bot.py
+shortsbot/config.py
+shortsbot/db.py
+shortsbot/editor.py
+shortsbot/pipeline.py
+shortsbot/tiktok.py
+shortsbot/twitch.py
+shortsbot/youtube.py

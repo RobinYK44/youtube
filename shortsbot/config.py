@@ -38,6 +38,10 @@ class Config:
     youtube_token_file: Path = ROOT / os.getenv("YOUTUBE_TOKEN_FILE", "youtube_token.json")
     youtube_privacy: str = os.getenv("YOUTUBE_PRIVACY", "public")
 
+    tiktok_client_key: str = os.getenv("TIKTOK_CLIENT_KEY", "").strip()
+    tiktok_client_secret: str = os.getenv("TIKTOK_CLIENT_SECRET", "").strip()
+    tiktok_token_file: Path = ROOT / os.getenv("TIKTOK_TOKEN_FILE", "tiktok_token.json")
+
     streamers: list[str] = field(default_factory=lambda: _list("STREAMERS", DEFAULT_STREAMERS))
     auto_discover_top: int = _int("AUTO_DISCOVER_TOP", 5)
     discover_language: str = os.getenv("DISCOVER_LANGUAGE", "en").strip()

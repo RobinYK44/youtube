@@ -18,6 +18,7 @@ RETRY_AFTER = timedelta(minutes=30)
 BATCH_EVERY = timedelta(hours=20)  # kiesmodus: at most one new batch of candidates per day
 AUTO_PICK_BEFORE = timedelta(minutes=45)  # kiesmodus: pick the best one yourself if the owner did not
 CANDIDATE_MAX_AGE = timedelta(hours=48)
+TIKTOK_GAP = timedelta(minutes=45)  # never post to TikTok more often than this, also after catching up
 PICK_AHEAD_HOURS = 48  # kiesmodus: picked Shorts may fill publish times up to two days ahead
 
 
@@ -142,7 +143,10 @@ class ShortsBot(discord.Client):
         now = datetime.now(timezone.utc)
         for clip_id in db.expire_candidates((now - CANDIDATE_MAX_AGE).isoformat()):
             pipeline.video_path(clip_id).unlink(missing_ok=True)
-        if db.get_setting("paused") == "1" or now < self.retry_at:
+        if db.get_setting("paused") == "1":
+            return
+        await self.post_tiktok_due()
+        if now < self.retry_at:
             return
         if pipeline.candidates_per_day():
             if not self.making_batch and not self.lock.locked():
@@ -157,6 +161,34 @@ class ShortsBot(discord.Client):
             if not await self.run_cycle(slot):
                 self.retry_at = datetime.now(timezone.utc) + RETRY_AFTER
                 return
+
+    async def post_tiktok_due(self):
+        """TikTok cannot schedule posts, so the bot posts each Short at its publish time (or later when the
+        PC was off), at most one every TIKTOK_GAP."""
+        if not pipeline.tiktok_enabled():
+            return
+        now = datetime.now(timezone.utc)
+        last = db.get_setting("tiktok_last")
+        if last and now - datetime.fromisoformat(last) < TIKTOK_GAP:
+            return
+        due = db.tiktok_due(now.isoformat())
+        if not due:
+            return
+        row = due[0]
+        db.set_setting("tiktok_last", now.isoformat())
+        async with self.upload_lock:
+            try:
+                _, public = await asyncio.to_thread(pipeline.post_tiktok, row)
+            except Exception as exc:
+                log.exception("TikTok mislukt")
+                await self.say(f"⚠️ TikTok-upload van **{row['title']}** mislukt: {_error_text(exc)}")
+                return
+        if public:
+            await self.say(f"🎵 Op TikTok gezet: **{row['title']}**")
+        else:
+            await self.say(
+                f"🎵 Op TikTok gezet: **{row['title']}** (🔒 alleen zichtbaar voor jou tot TikTok je app goedkeurt)"
+            )
 
     @scheduler.before_loop
     async def _wait_ready(self):
@@ -360,6 +392,8 @@ def register_commands(bot: ShortsBot):
             f"• {r['broadcaster']}: https://youtube.com/shorts/{r['youtube_id']}" for r in db.recent_uploads(5)
         )
         waiting = f"**Klaar om te kiezen:** {len(db.candidates())}\n" if pipeline.candidates_per_day() else ""
+        if pipeline.tiktok_enabled():
+            waiting += f"**TikTok:** aan, {db.tiktok_queue_size()} in de wachtrij\n"
         await interaction.response.send_message(
             f"**Status:** {'⏸️ gepauzeerd' if paused else '▶️ actief'}\n"
             f"**Modus:** {_mode_text()}\n"
@@ -416,6 +450,8 @@ def register_commands(bot: ShortsBot):
     @admin
     async def clear_scheduled(interaction: discord.Interaction):
         rows = db.cancel_scheduled_after(datetime.now(timezone.utc).isoformat())
+        for row in rows:
+            pipeline.video_path(row["id"]).unlink(missing_ok=True)  # kept for TikTok, not needed anymore
         if not rows:
             await interaction.response.send_message("Er staat niks ingepland.")
             return
@@ -446,6 +482,18 @@ def register_commands(bot: ShortsBot):
             f"🕒 Shorts komen nu online om **{', '.join(parsed)}** (Nederlandse tijd). "
             "Shorts die al ingepland staan houden hun oude tijd."
         )
+
+    @tree.command(name="tiktok", description="Zet het posten op TikTok aan of uit")
+    @app_commands.describe(aan="Aan of uit")
+    @admin
+    async def tiktok_toggle(interaction: discord.Interaction, aan: bool):
+        db.set_setting("tiktok_paused", "0" if aan else "1")
+        if aan and not pipeline.tiktok_enabled():
+            await interaction.response.send_message(
+                "TikTok is nog niet gekoppeld. Draai op je pc eerst `python -m shortsbot.tiktok auth`."
+            )
+            return
+        await interaction.response.send_message("🎵 TikTok staat aan." if aan else "🎵 TikTok staat uit.")
 
     @tree.command(name="nu", description="Maak en upload direct een nieuwe short")
     @admin

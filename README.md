@@ -78,6 +78,25 @@ docker run -d --restart always --name shortsbot \
 
 ---
 
+## TikTok (optioneel)
+
+De bot kan elke short ook op TikTok zetten. TikTok kan niet inplannen, dus de bot post op de gekozen tijd zelf;
+staat je computer dan uit, dan post hij de gemiste shorts zodra hij weer aan staat (minstens 45 minuten ertussen).
+Tot TikTok je app goedkeurt, zijn de TikTok-posts alleen voor jou zichtbaar.
+
+1. Ga naar <https://developers.tiktok.com>, log in en maak een app (**Manage apps → Connect an app**).
+2. Vul in: app-icoon, categorie *Entertainment*, beschrijving, en als links
+   `https://robinyk44.github.io/youtube/terms.html` en `https://robinyk44.github.io/youtube/privacy.html`.
+   Kies als platform **Desktop**.
+3. Voeg de producten **Login Kit** en **Content Posting API** toe. Zet bij Content Posting API **Direct Post** aan.
+4. Scopes: `user.info.basic` en `video.publish`.
+5. Redirect URI (bij Login Kit, Desktop): `http://localhost:8765/callback/`
+6. Maak een **Sandbox** aan, voeg je eigen TikTok-account toe als *Target user*, en kopieer de sandbox
+   **Client key** en **Client secret** naar `.env` (`TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`).
+7. Log één keer in: `python -m shortsbot.tiktok auth`
+8. Start de bot opnieuw. Vanaf nu gaat elke short ook naar TikTok. Uitzetten kan met `/tiktok aan:False`.
+9. Wil je dat de posts openbaar worden? Dien de app in voor review (**Submit for review**) en vraag de audit aan.
+
 ## Discord-commando's
 
 | Commando | Wat het doet |
@@ -92,6 +111,7 @@ docker run -d --restart always --name shortsbot \
 | `/streamer_toevoegen naam` | Streamer toevoegen (Twitch-naam) |
 | `/streamer_verwijderen naam` | Streamer weghalen |
 | `/tijden 18:00, 21:00, 00:00, 02:00` | Kiezen op welke tijden de shorts online komen |
+| `/tiktok aan` | Posten op TikTok aan- of uitzetten |
 | `/pauze` / `/hervat` | Tijdelijk stoppen / weer verder |
 | `/ingepland_wissen` | Tijden van ingeplande shorts weer vrijmaken (verwijder de video's zelf in YouTube Studio) |
 
