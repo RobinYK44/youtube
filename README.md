@@ -107,7 +107,8 @@ Tot TikTok je app goedkeurt, zijn de TikTok-posts alleen voor jou zichtbaar.
 | Commando | Wat het doet |
 |---|---|
 | `/status` | Hoeveel shorts vandaag, wanneer de volgende komt, laatste uploads |
-| `/nu` | Meteen een short maken en uploaden |
+| `/nuyoutube` | Meteen een short maken en op YouTube zetten |
+| `/nutiktok` | Meteen een short maken alleen voor TikTok: je krijgt de video en de tekst in Discord (niet op YouTube) |
 | `/kiesmodus aantal` | Elke dag zoveel shorts maken waar jij uit kiest (0 = volledig automatisch) |
 | `/compilatie aantal` | Short met 3 grappige momenten van verschillende streamers (#3, #2, #1) om uit te kiezen |
 | `/meer aantal` | Kiesmodus: nu meteen extra shorts zoeken om uit te kiezen (standaard 10) |

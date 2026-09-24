@@ -196,8 +196,9 @@ class ShortsBot(discord.Client):
 
     # ---- fully automatic --------------------------------------------------------------------------------
 
-    async def run_cycle(self, slot: datetime | None = None) -> bool:
-        """Make one Short and upload it. Without a slot it goes online right away. False when it failed."""
+    async def run_cycle(self, slot: datetime | None = None, tiktok_only: bool = False) -> bool:
+        """Make one Short and upload it. Without a slot it goes online right away. False when it failed.
+        With tiktok_only it skips YouTube and only sends the TikTok version to Discord."""
         async with self.lock:
             try:
                 clip = await asyncio.to_thread(pipeline.pick_clip)
@@ -221,10 +222,23 @@ class ShortsBot(discord.Client):
                 await self.say(f"⚠️ Bewerken mislukt: {_error_text(exc)}")
                 return False
 
+        if tiktok_only:
+            return await self.send_tiktok_only(clip, video)
         async with self.upload_lock:
             ok, text = await self._publish(clip, video, slot)
         await self.say(text)
         return ok
+
+    async def send_tiktok_only(self, clip: Clip, video) -> bool:
+        copy = await asyncio.to_thread(pipeline.tiktok_version, video)
+        video.unlink(missing_ok=True)
+        if copy is None:
+            db.mark(clip, "failed")
+            await self.say("⚠️ TikTok-versie maken mislukt.")
+            return False
+        db.mark(clip, "tiktok")  # used, so it will not show up again for YouTube
+        await self.send_tiktok_copy(clip, copy, None)
+        return True
 
     async def _publish(self, clip: Clip, video, slot: datetime | None) -> tuple[bool, str]:
         manual_tiktok = not pipeline.tiktok_enabled() and db.get_setting("tiktok_paused") != "1"
@@ -520,14 +534,23 @@ def register_commands(bot: ShortsBot):
                 "🎵 TikTok staat aan: na elke upload stuur ik je de TikTok-versie en de tekst om te plakken."
             )
 
-    @tree.command(name="nu", description="Maak en upload direct een nieuwe short")
+    @tree.command(name="nuyoutube", description="Maak direct een nieuwe short en zet hem op YouTube")
     @admin
-    async def now(interaction: discord.Interaction):
+    async def now_youtube(interaction: discord.Interaction):
         if bot.lock.locked():
             await interaction.response.send_message("⏳ Ik ben al bezig met een short, even geduld.")
             return
-        await interaction.response.send_message("🚀 Ik ga meteen een short maken...")
+        await interaction.response.send_message("🚀 Ik ga meteen een short maken voor YouTube...")
         bot.background = asyncio.create_task(bot.run_cycle())
+
+    @tree.command(name="nutiktok", description="Maak direct een nieuwe short alleen voor TikTok (niet op YouTube)")
+    @admin
+    async def now_tiktok(interaction: discord.Interaction):
+        if bot.lock.locked():
+            await interaction.response.send_message("⏳ Ik ben al bezig met een short, even geduld.")
+            return
+        await interaction.response.send_message("📱 Ik ga meteen een short maken voor TikTok...")
+        bot.background = asyncio.create_task(bot.run_cycle(tiktok_only=True))
 
     @tree.command(name="top", description="De grootste live streamers op dit moment")
     @admin

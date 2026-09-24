@@ -13,7 +13,7 @@ _conn.executescript(
         broadcaster TEXT,
         title TEXT,
         views INTEGER,
-        status TEXT,          -- candidate / uploaded / rejected / failed / expired
+        status TEXT,          -- candidate / uploaded / tiktok / rejected / failed / expired
         youtube_id TEXT,
         updated_at TEXT
     );
