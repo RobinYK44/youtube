@@ -24,7 +24,7 @@ UPLOAD_AHEAD = timedelta(hours=24)  # picked Shorts are uploaded to YouTube this
 STATS_EVERY = timedelta(hours=12)
 WATCH_MINUTES = 30  # /letop: clips made in the last half hour
 WATCH_PER_ROUND = 2  # at most this many new clips every 3 minutes
-WATCH_SAME_STREAMER = timedelta(minutes=30)  # not 10 clips of the same moment
+WATCH_SAME_STREAMER = timedelta(minutes=10)  # not 10 clips of the same moment
 MAX_UPLOADS_PER_DAY = 6  # YouTube API quota: 10,000 units a day, an upload costs 1,600
 
 
