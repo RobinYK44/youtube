@@ -190,6 +190,8 @@ class ShortsBot(discord.Client):
         await self.say(
             f"🤖 Shorts-bot online (versie {VERSION}), {_mode_text()}. Shorts komen online om {', '.join(pipeline.publish_times())}. "
             "Typ `/status` voor info."
+            + ("\n⏸️ Let op: ik sta nog op **pauze** en zoek geen nieuwe shorts. Typ `/hervat` om verder te gaan."
+               if db.get_setting("paused") == "1" else "")
         )
 
     async def say(self, text: str, **kwargs):
