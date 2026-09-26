@@ -194,7 +194,11 @@ def twitch_candidates(needed: int) -> list[Clip]:
     last CLIP_LOOKBACK_MAX_DAYS days: a clip with lots of views two weeks ago can still do well as a Short."""
     found = find_candidates()
     favourites = set(favourite_streamers())
-    if sum(c.broadcaster_login in favourites for c in found) >= needed:
+    per_streamer: dict[str, int] = {}
+    for clip in found:
+        if clip.broadcaster_login in favourites:
+            per_streamer[clip.broadcaster_login] = per_streamer.get(clip.broadcaster_login, 0) + 1
+    if sum(min(n, _cap(needed)) for n in per_streamer.values()) >= needed:  # enough, also without one streamer hogging
         return found
     if config.clip_lookback_max_days <= config.clip_lookback_days:
         return found
@@ -206,18 +210,45 @@ def twitch_candidates(needed: int) -> list[Clip]:
     return fresh_favourites + older_favourites + rest
 
 
-def pick_candidates(count: int, per_streamer: int = 3) -> list[Clip]:
-    """Highest-scoring unused clips, at most `per_streamer` of each streamer for variety."""
+MAX_SHARE = 0.25  # one streamer gets at most a quarter of a list, unless there is really nothing else
+
+
+def _cap(count: int) -> int:
+    return max(2, math.ceil(count * MAX_SHARE))
+
+
+def _take_turns(clips: list[Clip], count: int, cap: int, already: list[Clip] = ()) -> list[Clip]:
+    """Every streamer's best clip first, then every streamer's second best, and so on, at most `cap` per streamer
+    (counting `already`). So a streamer with lots of popular clips (like xQc) cannot fill the whole list."""
+    taken: dict[str, int] = {}
+    for clip in already:
+        taken[clip.broadcaster_login] = taken.get(clip.broadcaster_login, 0) + 1
+    queues: dict[str, list[Clip]] = {}
+    for clip in clips:  # already best first
+        if clip not in already:
+            queues.setdefault(clip.broadcaster_login, []).append(clip)
+    picked: list[Clip] = []
+    while len(picked) < count:
+        turn = [
+            queue.pop(0) for login, queue in queues.items()
+            if queue and taken.get(login, 0) + sum(c.broadcaster_login == login for c in picked) < cap
+        ]
+        if not turn:
+            break
+        picked += turn
+    return picked[:count]
+
+
+def pick_candidates(count: int) -> list[Clip]:
+    """Unused clips spread over the streamers: favourites first, then the live top streamers, and only when
+    there is nothing else more of the same streamer."""
     found = twitch_candidates(count)
-    picked, per = [], {}
-    for clip in found:
-        if per.get(clip.broadcaster_login, 0) < per_streamer:
-            picked.append(clip)
-            per[clip.broadcaster_login] = per.get(clip.broadcaster_login, 0) + 1
-        if len(picked) == count:
-            return picked
-    # Not enough variety left: fill up with the next best clips, whoever the streamer is.
-    picked += [clip for clip in found if clip not in picked][: count - len(picked)]
+    favourites = set(favourite_streamers())
+    cap = _cap(count)
+    picked = _take_turns([c for c in found if c.broadcaster_login in favourites], count, cap)
+    picked += _take_turns([c for c in found if c.broadcaster_login not in favourites], count - len(picked), cap, picked)
+    if len(picked) < count:  # really nothing else: then more of the same streamers after all
+        picked += _take_turns(found, count - len(picked), count, picked)
     return picked
 
 
