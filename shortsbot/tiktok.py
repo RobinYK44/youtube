@@ -19,7 +19,7 @@ from .config import config
 
 AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
 API = "https://open.tiktokapis.com/v2"
-SCOPES = "user.info.basic,video.publish"
+SCOPES = "user.info.basic,video.publish,video.upload"
 REDIRECT_PORT = 8765
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/callback/"
 MIN_CHUNK, MAX_CHUNK = 5 * 1024 * 1024, 64 * 1024 * 1024
@@ -144,6 +144,37 @@ def caption(clip, hashtags: list[str]) -> str:
     return tiktok_caption(clip)
 
 
+def _send_file(upload_url: str, video_path, size: int, chunk_size: int, count: int) -> None:
+    with open(video_path, "rb") as f:
+        for i in range(count):
+            start = i * chunk_size
+            end = size - 1 if i == count - 1 else start + chunk_size - 1
+            f.seek(start)
+            piece = f.read(end - start + 1)
+            r = requests.put(
+                upload_url,
+                data=piece,
+                headers={
+                    "Content-Type": "video/mp4",
+                    "Content-Length": str(len(piece)),
+                    "Content-Range": f"bytes {start}-{end}/{size}",
+                },
+                timeout=300,
+            )
+            if r.status_code not in (200, 201, 206):
+                raise TikTokError(f"Uploaden naar TikTok mislukt (HTTP {r.status_code}): {r.text[:300]}")
+
+
+def _wait(publish_id: str, done: str) -> None:
+    for _ in range(40):  # wait up to ~4 minutes for TikTok to process the video
+        status = _post("/post/publish/status/fetch/", {"publish_id": publish_id})
+        if status.get("status") == done:
+            return
+        if status.get("status") == "FAILED":
+            raise TikTokError(f"TikTok weigerde de video: {status.get('fail_reason')}")
+        time.sleep(6)
+
+
 def upload(video_path, clip, hashtags: list[str]) -> tuple[str, bool]:
     """Post a video. Returns (publish_id, public). Falls back to private while the app is not audited."""
     info = _post("/post/publish/creator_info/query/", {})
@@ -176,34 +207,23 @@ def upload(video_path, clip, hashtags: list[str]) -> tuple[str, bool]:
         privacy = "SELF_ONLY"  # not audited yet: TikTok only allows private posts
         data = init(privacy)
 
-    with open(video_path, "rb") as f:
-        for i in range(count):
-            start = i * chunk_size
-            end = size - 1 if i == count - 1 else start + chunk_size - 1
-            f.seek(start)
-            piece = f.read(end - start + 1)
-            r = requests.put(
-                data["upload_url"],
-                data=piece,
-                headers={
-                    "Content-Type": "video/mp4",
-                    "Content-Length": str(len(piece)),
-                    "Content-Range": f"bytes {start}-{end}/{size}",
-                },
-                timeout=300,
-            )
-            if r.status_code not in (200, 201, 206):
-                raise TikTokError(f"Uploaden naar TikTok mislukt (HTTP {r.status_code}): {r.text[:300]}")
+    _send_file(data["upload_url"], video_path, size, chunk_size, count)
+    _wait(data["publish_id"], "PUBLISH_COMPLETE")
+    return data["publish_id"], privacy == "PUBLIC_TO_EVERYONE"
 
-    publish_id = data["publish_id"]
-    for _ in range(40):  # wait up to ~4 minutes for TikTok to process the video
-        status = _post("/post/publish/status/fetch/", {"publish_id": publish_id})
-        if status.get("status") == "PUBLISH_COMPLETE":
-            break
-        if status.get("status") == "FAILED":
-            raise TikTokError(f"TikTok weigerde de video: {status.get('fail_reason')}")
-        time.sleep(6)
-    return publish_id, privacy == "PUBLIC_TO_EVERYONE"
+
+def upload_draft(video_path) -> str:
+    """Send a video to the TikTok app's inbox; the owner adds the text and posts it there. Returns publish_id."""
+    size = video_path.stat().st_size
+    chunk_size, count = _chunks(size)
+    data = _post("/post/publish/inbox/video/init/", {
+        "source_info": {
+            "source": "FILE_UPLOAD", "video_size": size, "chunk_size": chunk_size, "total_chunk_count": count,
+        },
+    })
+    _send_file(data["upload_url"], video_path, size, chunk_size, count)
+    _wait(data["publish_id"], "SEND_TO_USER_INBOX")
+    return data["publish_id"]
 
 
 if __name__ == "__main__":

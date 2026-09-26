@@ -310,8 +310,9 @@ def tiktok_needs_audit(exc: Exception) -> bool:
     return "can_only_post_to_private_accounts" in str(exc)
 
 
-def post_tiktok(row) -> tuple[str, bool]:
-    """Post one queued Short to TikTok. Returns (publish_id, public)."""
+def post_tiktok(row) -> tuple[str, str]:
+    """Post one queued Short to TikTok. Returns (publish_id, status): posted / private / draft.
+    While the TikTok app is not approved it goes to the TikTok app's inbox as a draft instead."""
     from . import tiktok
 
     clip = clip_from_row(row)
@@ -321,11 +322,17 @@ def post_tiktok(row) -> tuple[str, bool]:
         raise RuntimeError("videobestand niet meer gevonden")
     try:
         publish_id, public = tiktok.upload(video, clip, youtube.make_hashtags(clip))
+        status = "posted" if public else "private"
     except Exception as exc:
         db.set_tiktok(clip.id, "failed")
-        if not tiktok_needs_audit(exc):  # the bot sends the video to post by hand instead
+        if not tiktok_needs_audit(exc):
             video.unlink(missing_ok=True)
-        raise
-    db.set_tiktok(clip.id, "posted" if public else "private", publish_id)
+            raise
+        try:
+            publish_id, status = tiktok.upload_draft(video), "draft"
+        except Exception:
+            log.exception("TikTok-concept mislukt")
+            raise exc  # keep the video: the bot sends it to post by hand
+    db.set_tiktok(clip.id, status, publish_id)
     video.unlink(missing_ok=True)
-    return publish_id, public
+    return publish_id, status

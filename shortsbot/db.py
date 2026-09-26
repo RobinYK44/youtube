@@ -94,7 +94,7 @@ def cancel_scheduled_after(moment: str) -> list[sqlite3.Row]:
 
 
 def set_tiktok(clip_id: str, status: str, tiktok_id: str = "") -> None:
-    """status: queued / posted / private / failed"""
+    """status: queued / posted / private / draft / failed"""
     _conn.execute("UPDATE clips SET tiktok_status = ?, tiktok_id = ? WHERE id = ?", (status, tiktok_id, clip_id))
     _conn.commit()
 

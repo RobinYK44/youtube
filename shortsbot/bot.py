@@ -180,7 +180,7 @@ class ShortsBot(discord.Client):
         db.set_setting("tiktok_last", datetime.now(timezone.utc).isoformat())
         async with self.upload_lock:
             try:
-                _, public = await asyncio.to_thread(pipeline.post_tiktok, row)
+                _, status = await asyncio.to_thread(pipeline.post_tiktok, row)
             except Exception as exc:
                 if pipeline.tiktok_needs_audit(exc):
                     await self.send_tiktok_by_hand(row)
@@ -188,7 +188,13 @@ class ShortsBot(discord.Client):
                 log.exception("TikTok mislukt")
                 await self.say(f"⚠️ TikTok-upload van **{row['title']}** mislukt: {_error_text(exc)}")
                 return
-        if public:
+        if status == "draft":
+            await self.say(
+                f"📥 **{row['title']}** staat klaar in je **TikTok-app** (kijk bij je meldingen of inbox). "
+                "Open hem, voeg eventueel een trending geluidje toe, plak de tekst hieronder en post hem 👇"
+            )
+            await self.say(tiktok_caption(pipeline.clip_from_row(row)))
+        elif status == "posted":
             await self.say(f"🎵 Op TikTok gezet: **{row['title']}**")
         else:
             await self.say(
@@ -202,8 +208,8 @@ class ShortsBot(discord.Client):
         copy = await asyncio.to_thread(pipeline.tiktok_version, video) if video.exists() else None
         video.unlink(missing_ok=True)
         await self.say(
-            "ℹ️ TikTok laat de bot pas zelf posten als je app is goedgekeurd (of als je TikTok-account op privé "
-            "staat). Tot die tijd krijg je de video hier om zelf te posten."
+            "ℹ️ TikTok nam de video niet aan. Dubbelklik een keer op `tiktok_login` op je pc, dan komt hij "
+            "voortaan als concept in je TikTok-app. Deze krijg je hier om zelf te posten."
         )
         if copy:
             await self.send_tiktok_copy(clip, copy, None)

@@ -87,7 +87,8 @@ Uitzetten kan met `/tiktok aan:False`.
 
 **Automatisch (optioneel):** de bot kan ook zelf op TikTok posten. TikTok kan niet inplannen, dus de bot post op de gekozen tijd zelf;
 staat je computer dan uit, dan post hij de gemiste shorts zodra hij weer aan staat (minstens 45 minuten ertussen).
-Tot TikTok je app goedkeurt, zijn de TikTok-posts alleen voor jou zichtbaar.
+Tot TikTok je app goedkeurt, mag de bot niet zelf openbaar posten. Hij stuurt de video dan als concept naar je
+TikTok-app (melding/inbox) en de tekst naar Discord; jij drukt in TikTok op posten.
 
 1. Ga naar <https://developers.tiktok.com>, log in en maak een app (**Manage apps → Connect an app**).
 2. Vul in: app-icoon, categorie *Entertainment*, beschrijving, en als links
