@@ -126,6 +126,32 @@ class TikTokButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tiktok:
         await interaction.followup.send(text, ephemeral=True)
 
 
+class PostNowButton(discord.ui.DynamicItem[discord.ui.Button], template=r"now:(?P<clip_id>.+)"):
+    """'Nu online' button under a fresh clip from /actueel: upload it and make it public right away."""
+
+    def __init__(self, clip_id: str):
+        super().__init__(
+            discord.ui.Button(
+                label="Nu online", style=discord.ButtonStyle.primary, emoji="🚀", custom_id=f"now:{clip_id}"
+            )
+        )
+        self.clip_id = clip_id
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(match["clip_id"])
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        ok, text = await interaction.client.post_now(self.clip_id)
+        if ok:
+            await interaction.edit_original_response(
+                content=f"{interaction.message.content}\n{text}", view=_tiktok_only(self.clip_id)
+            )
+        else:
+            await interaction.followup.send(text, ephemeral=True)
+
+
 class ShortsBot(discord.Client):
     def __init__(self):
         super().__init__(intents=discord.Intents.default())
@@ -148,7 +174,7 @@ class ShortsBot(discord.Client):
         self.batch_task = asyncio.create_task(coro)
 
     async def setup_hook(self):
-        self.add_dynamic_items(PickButton, RejectButton, TikTokButton)
+        self.add_dynamic_items(PickButton, RejectButton, TikTokButton, PostNowButton)
         self.scheduler.start()
 
     async def on_ready(self):
@@ -520,7 +546,42 @@ class ShortsBot(discord.Client):
                 return
             await self.make_candidate(pipeline.compilation_clip(parts), number, count)
 
-    async def make_candidate(self, clip: Clip, number: int, total: int):
+    async def fresh(self, hours: float) -> None:
+        """/actueel: clips that are blowing up right now, or nothing at all."""
+        try:
+            clips = await asyncio.to_thread(pipeline.fresh_clips, hours)
+        except Exception as exc:
+            log.exception("Verse clips zoeken mislukt")
+            await self.say(f"⚠️ Zoeken mislukt: {_error_text(exc)}")
+            return
+        if not clips:
+            await self.say(
+                f"🔍 Nu niks dat echt ontploft (van de laatste {hours:g} uur). Probeer het later nog eens."
+            )
+            return
+        await self.say(
+            f"🔥 **{len(clips)} verse clip(s)** die nu ontploffen! Met **🚀 Nu online** staat hij meteen op YouTube, "
+            "zodat je er als een van de eersten bij bent."
+        )
+        for number, clip in enumerate(clips, 1):
+            await self.make_candidate(clip, number, len(clips), fresh=True)
+
+    async def post_now(self, clip_id: str) -> tuple[bool, str]:
+        """Upload a candidate and make it public right away, without waiting for a publish time."""
+        async with self.upload_lock:
+            row = db.get(clip_id)
+            if row is None or row["status"] != "candidate":
+                return False, "Deze short is al gekozen of verlopen."
+            if self.upload_limit_reached():
+                return False, "YouTube-limiet voor vandaag bereikt (6 uploads). Kies hem met ✅ voor een latere tijd."
+            clip = pipeline.clip_from_row(row)
+            video = pipeline.video_path(clip_id)
+            if not video.exists():
+                db.mark(clip, "expired")
+                return False, "Het videobestand van deze short bestaat niet meer."
+            return await self._publish(clip, video, None)
+
+    async def make_candidate(self, clip: Clip, number: int, total: int, fresh: bool = False):
         async with self.lock:
             try:
                 video = await asyncio.to_thread(pipeline.render, clip)
@@ -534,6 +595,8 @@ class ShortsBot(discord.Client):
                 db.mark(part, "in_compilation")  # never used again on its own
             preview = await asyncio.to_thread(pipeline.preview, video)
         view = discord.ui.View(timeout=None)
+        if fresh:
+            view.add_item(PostNowButton(clip.id))
         view.add_item(PickButton(clip.id))
         view.add_item(RejectButton(clip.id))
         view.add_item(TikTokButton(clip.id))
@@ -742,6 +805,18 @@ def register_commands(bot: ShortsBot):
             await interaction.response.send_message(
                 "🎵 TikTok staat aan: na elke upload stuur ik je de TikTok-versie en de tekst om te plakken."
             )
+
+    @tree.command(name="actueel", description="Zoek clips die nu net ontploffen, om er als eerste bij te zijn")
+    @app_commands.describe(uren="Hoe nieuw (standaard: gemaakt in de laatste 6 uur)")
+    @admin
+    async def fresh(interaction: discord.Interaction, uren: app_commands.Range[int, 1, 24] = 6):
+        if bot.making_batch:
+            await interaction.response.send_message(
+                "⏳ Ik ben nog bezig met shorts maken. Probeer het als ik klaar ben nog eens."
+            )
+            return
+        await interaction.response.send_message("🔥 Ik kijk wat er nu net ontploft...")
+        bot.start_batch(bot.fresh(uren))
 
     @tree.command(name="nuyoutube", description="Maak direct een nieuwe short en zet hem op YouTube")
     @admin

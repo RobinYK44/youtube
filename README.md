@@ -126,6 +126,7 @@ TikTok-app (melding/inbox) en de tekst naar Discord; jij drukt in TikTok op post
 | `/youtubers` | Van welke YouTube-kanalen de bot momenten knipt |
 | `/youtuber_toevoegen naam` / `/youtuber_verwijderen naam` | YouTube-kanaal toevoegen of weghalen (naam uit de link, bijv. `MrBeast`) |
 | `/tiktok_clip link` | Van een bepaalde Twitch-clip of YouTube-video een TikTok-video maken (YouTube met `&t=90s` begint op die tijd) |
+| `/actueel uren` | Alleen clips die nú ontploffen (gemaakt in de laatste 6 uur, veel views per uur). Met **🚀 Nu online** staat hij meteen op YouTube. Niks actueels = niks |
 | `/top` | De 10 grootste live streamers op dit moment |
 | `/streamers` | Van welke streamers de bot clips zoekt |
 | `/streamer_toevoegen naam` | Streamer toevoegen (Twitch-naam) |

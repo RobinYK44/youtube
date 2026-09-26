@@ -147,7 +147,7 @@ def performance() -> dict[str, float]:
     }
 
 
-def find_candidates(days: int | None = None) -> list[Clip]:
+def find_candidates(days: float | None = None, min_views: int | None = None) -> list[Clip]:
     logins = streamer_list()
     favourites = set(favourite_streamers())
     learned = performance()
@@ -171,7 +171,7 @@ def find_candidates(days: int | None = None) -> list[Clip]:
         candidates += [
             c
             for c in clips
-            if c.view_count >= config.min_clip_views
+            if c.view_count >= (config.min_clip_views if min_views is None else min_views)
             and c.duration >= config.min_clip_seconds
             and c.duration <= config.max_short_seconds + 1
             and not db.is_known(c.id)
@@ -215,6 +215,25 @@ MAX_SHARE = 0.25  # one streamer gets at most a quarter of a list, unless there 
 
 def _cap(count: int) -> int:
     return max(2, math.ceil(count * MAX_SHARE))
+
+
+FRESH_MIN_VIEWS = 1500
+FRESH_MIN_VIEWS_PER_HOUR = 1000
+
+
+def views_per_hour(clip: Clip) -> float:
+    return clip.view_count / age_hours(clip)
+
+
+def fresh_clips(hours: float, count: int = 3) -> list[Clip]:
+    """Clips made in the last `hours` hours that are blowing up right now (lots of views per hour), fastest first.
+    Empty when nothing is really taking off: then there is nothing to be the first with."""
+    found = [
+        c for c in find_candidates(days=hours / 24, min_views=FRESH_MIN_VIEWS)
+        if age_hours(c) <= hours and views_per_hour(c) >= FRESH_MIN_VIEWS_PER_HOUR
+    ]
+    found.sort(key=views_per_hour, reverse=True)
+    return _take_turns(found, count, cap=1)  # at most one per streamer
 
 
 def _take_turns(clips: list[Clip], count: int, cap: int, already: list[Clip] = ()) -> list[Clip]:
