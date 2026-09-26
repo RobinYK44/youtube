@@ -36,10 +36,17 @@ def remove_streamer(login: str) -> None:
 DISCOVERED_WEIGHT = 0.25
 
 
+# Always searched too, on top of STREAMERS in .env: big Twitch streamers with lots of funny, loud moments.
+MORE_STREAMERS = ["marlon", "plaqueboymax", "jasontheween", "silky", "yourragegaming", "agent00", "dukedennis", "sketch"]
+# The owner's favourites: their clips get a head start.
+TOP_STREAMERS = {"jynxzi", "stableronaldo", "lacy", "marlon"}
+TOP_BOOST = 1.5
+
+
 def favourite_streamers() -> list[str]:
     """Fixed list + streamers added via Discord, minus the ones removed via Discord."""
     removed = _csv_setting("streamers_remove")
-    logins = dict.fromkeys(config.streamers + sorted(_csv_setting("streamers_add")))
+    logins = dict.fromkeys(config.streamers + MORE_STREAMERS + sorted(_csv_setting("streamers_add")))
     return [login for login in logins if login not in removed]
 
 
@@ -76,11 +83,12 @@ def viral_score(clip: Clip, streamer_median: float, now: datetime | None = None)
     """Guess how likely a clip is to do well as a Short. The bot cannot watch the video, so it uses:
     how fast the views come in, whether the clip stands out for this streamer, title words and length."""
     score = clip.view_count / age_hours(clip, now) ** 0.5
-    standout = min(3.0, max(0.5, clip.view_count / max(streamer_median, 1)))
-    score *= standout**0.5
+    # A clip that gets far more views than this streamer's other clips is usually one where something happened.
+    standout = min(4.0, max(0.5, clip.view_count / max(streamer_median, 1)))
+    score *= standout**0.8
     title = clip.title.lower()
     if youtube.moods(clip.title) or any(word in title for word in HOT_WORDS):
-        score *= 1.3
+        score *= 1.5
     # Short Shorts do best: 15-35 s is ideal, long clips get cut and may lose context.
     if 15 <= clip.duration <= 35:
         score *= 1.2
@@ -106,7 +114,9 @@ def find_candidates() -> list[Clip]:
         median = statistics.median([c.view_count for c in clips]) if clips else 1
         for clip in clips:
             clip.score = viral_score(clip, median, now)
-            if login not in favourites:
+            if login in TOP_STREAMERS:
+                clip.score = round(clip.score * TOP_BOOST, 1)
+            elif login not in favourites:
                 clip.score = round(clip.score * DISCOVERED_WEIGHT, 1)
         candidates += [
             c
@@ -123,6 +133,7 @@ def find_candidates() -> list[Clip]:
         games = {}
     for clip in candidates:
         clip.game = games.get(clip.game_id, "")
+        clip.title = youtube.better_title(clip)  # after scoring: the score uses the original title
     # Favourites always first; the live top streamers only fill up when the favourites run out.
     candidates.sort(key=lambda c: (c.broadcaster_login in favourites, c.score), reverse=True)
     return candidates

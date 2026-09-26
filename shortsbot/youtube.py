@@ -4,6 +4,7 @@ One-time login (run on a PC with a browser):
     python -m shortsbot.youtube auth
 This creates youtube_token.json; copy it to wherever the bot runs.
 """
+import hashlib
 import html
 import os
 import re
@@ -50,6 +51,39 @@ def moods(title: str) -> list[str]:
                 found.append(mood)
                 break
     return found
+
+
+# Titles for clips whose Twitch title says nothing ("asfsaf", "WOOO"). The emoji keep the mood for the hashtags.
+TITLE_TEMPLATES = {
+    "funny": ["{name} had chat CRYING 😂", "{name} couldn't stop laughing 😂", "This is why {name} is so funny 😂"],
+    "rage": ["{name} completely lost it 😡", "{name} RAGED so hard 😡"],
+    "scary": ["{name} got SO scared 😱", "{name} was not ready for this 😱"],
+    "clutch": ["{name} actually pulled this off 🔥", "{name} went CRAZY here 🔥"],
+    "fail": ["{name} fumbled this so bad 💀", "It all went wrong for {name} 💀"],
+    "wholesome": ["{name} made chat so happy ❤️", "Most wholesome {name} moment ❤️"],
+    "music": ["{name} started singing 🎵", "{name} had chat vibing 🎵"],
+    "": [
+        "{name} can't believe this happened 😭", "Nobody expected {name} to do this 💀",
+        "{name}'s reaction is priceless 😭", "Wait for {name}'s reaction 💀", "{name} had chat going crazy 😭",
+        "This {name} moment is insane 💀",
+    ],
+}
+
+
+def says_nothing(title: str) -> bool:
+    words = re.findall(r"[^\W\d_]{2,}", title)
+    return len(words) < 3 or sum(len(w) for w in words) < 12
+
+
+def better_title(clip) -> str:
+    """Keep a clear Twitch title, replace a meaningless one ('asfsaf', 'WOOO', 'sucks')."""
+    if not says_nothing(clip.title):
+        return clip.title
+    mood = next(iter(moods(clip.title)), "")
+    options = TITLE_TEMPLATES[mood]
+    pick = int(hashlib.sha1(clip.id.encode()).hexdigest(), 16) % len(options)  # stable for the same clip
+    name = clip.broadcaster_name.strip("_")
+    return options[pick].format(name=name.capitalize() if name.islower() else name)
 
 
 def make_hashtags(clip, minimum: int = 6, maximum: int = 8) -> list[str]:
@@ -144,8 +178,9 @@ def _credentials() -> Credentials:
 
 def build_metadata(clip) -> dict:
     hashtags = make_hashtags(clip)
-    suffix = f" | {clip.broadcaster_name} #shorts"
     title = clip.title.strip() or f"{clip.broadcaster_name} moment"
+    named = clip.parts or clip.broadcaster_name.lower() in title.lower()
+    suffix = " #shorts" if named else f" | {clip.broadcaster_name} #shorts"
     title = title[: 100 - len(suffix)].rstrip() + suffix
     if clip.parts:
         credits = "Credits:\n" + "".join(

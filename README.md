@@ -141,9 +141,10 @@ Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met 
 | `CANDIDATES_PER_DAY` | 0 | Kiesmodus: zoveel shorts per dag maken om uit te kiezen (ook via `/kiesmodus`) |
 | `YOUTUBE_PRIVACY` | public | `public`, `unlisted` of `private` |
 | `CLIP_LOOKBACK_DAYS` | 2 | Hoe ver terug zoeken naar clips |
-| `MIN_CLIP_VIEWS` | 500 | Alleen clips met minstens zoveel views |
+| `MIN_CLIP_VIEWS` | 3000 | Alleen clips met minstens zoveel views |
 | `MIN_CLIP_SECONDS` | 10 | Alleen clips van minstens zoveel seconden |
 | `MAX_SHORT_SECONDS` | 60 | Maximale lengte van de short |
+| `CLIP_ZOOM` | 1.35 | Hoe ver de clip wordt ingezoomd (1 = niet, hoger = groter beeld maar meer van de zijkanten eraf) |
 | `TARGET_SHORT_SECONDS` | 35 | Langere clips worden ingekort tot ongeveer zoveel seconden (het einde blijft) |
 | `COMPILATIONS_PER_DAY` | 1 | Kiesmodus: zoveel compilaties (3 grappige momenten in één short) per dag erbij |
 | `COMPILATION_PART_SECONDS` | 18 | Maximale lengte van elk moment in een compilatie |

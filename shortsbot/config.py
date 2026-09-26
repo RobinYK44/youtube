@@ -19,6 +19,11 @@ def _int(name: str, default: int) -> int:
     return int(value) if value else default
 
 
+def _min_clip_views() -> int:
+    value = _int("MIN_CLIP_VIEWS", 3000)
+    return 3000 if value == 500 else value  # 500 was the old default copied into .env files: too many weak clips
+
+
 def _list(name: str, default: str = "") -> list[str]:
     return [s.strip().lower() for s in os.getenv(name, default).split(",") if s.strip()]
 
@@ -56,7 +61,8 @@ class Config:
     candidates_per_day: int = _int("CANDIDATES_PER_DAY", 0)
 
     clip_lookback_days: int = _int("CLIP_LOOKBACK_DAYS", 2)
-    min_clip_views: int = _int("MIN_CLIP_VIEWS", 500)
+    min_clip_views: int = _min_clip_views()
+    clip_zoom: float = float(os.getenv("CLIP_ZOOM", "").strip() or 1.35)
     min_clip_seconds: int = _int("MIN_CLIP_SECONDS", 10)
     max_short_seconds: int = _int("MAX_SHORT_SECONDS", 60)
     # Longer clips are cut to about this length. The end is kept: clips are made right after the moment.

@@ -140,7 +140,8 @@ def render_short(
         "[0:v]split[a][b];"
         "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
         "boxblur=20:5,eq=brightness=-0.15[bg];"
-        "[b]scale=1080:-2[fg];"
+        # Zoom in: cut a bit off the sides so the clip fills more of the phone screen.
+        f"[b]crop=iw/{config.clip_zoom}:ih,scale=1080:-2[fg];"
         "[bg][fg]overlay=(W-w)/2:(H-h)/2" + "".join("," + o for o in overlays) + ",format=yuv420p[v]"
     )
     cmd = [
