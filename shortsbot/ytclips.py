@@ -19,8 +19,17 @@ SKIP_START = 0.05  # everybody watches the first seconds, so the start of the gr
 HEAT_SCORE = 4000  # scale a moment's heat (0-1) to the same range as a good Twitch clip's viral score
 
 
+class _Silent:
+    """yt-dlp prints errors itself even when we catch them (like 'no streams tab'). Errors still raise."""
+
+    def debug(self, msg):
+        pass
+
+    info = warning = error = debug
+
+
 def _ydl(**opts) -> yt_dlp.YoutubeDL:
-    return yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, **opts})
+    return yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "logger": _Silent(), **opts})
 
 
 def channel_url(channel: str) -> str:
