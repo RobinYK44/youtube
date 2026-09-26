@@ -8,6 +8,7 @@ load_dotenv()
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
+VERSION = "26 sep, 17:00"  # shown in Discord, so it is easy to see whether an update arrived
 
 
 def _bool(name: str, default: bool) -> bool:

@@ -9,7 +9,7 @@ from discord import app_commands
 from discord.ext import tasks
 
 from . import db, pipeline
-from .config import config
+from .config import VERSION, config
 from .youtube import NeedsLogin, make_hashtags, tiktok_caption
 from .twitch import Clip
 
@@ -162,7 +162,7 @@ class ShortsBot(discord.Client):
         await self.tree.sync(guild=guild)
         log.info("Ingelogd als %s, kanaal #%s", self.user, self.channel)
         await self.say(
-            f"🤖 Shorts-bot online, {_mode_text()}. Shorts komen online om {', '.join(pipeline.publish_times())}. "
+            f"🤖 Shorts-bot online (versie {VERSION}), {_mode_text()}. Shorts komen online om {', '.join(pipeline.publish_times())}. "
             "Typ `/status` voor info."
         )
 
