@@ -67,6 +67,14 @@ class Twitch:
             for s in streams[:count]
         ]
 
+    def live_logins(self, user_ids: list[str]) -> set[str]:
+        """Which of these streamers are live right now."""
+        result = set()
+        for i in range(0, len(user_ids), 100):
+            params = [("user_id", uid) for uid in user_ids[i : i + 100]] + [("first", "100")]
+            result |= {s["user_login"] for s in self._get("streams", params)}
+        return result
+
     def clip_by_id(self, clip_id: str) -> Clip | None:
         """One clip by its id (the last part of a clip link)."""
         data = self._get("clips", {"id": clip_id})

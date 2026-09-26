@@ -247,24 +247,40 @@ def minutes_old(clip: Clip) -> float:
     return (datetime.now(timezone.utc) - created).total_seconds() / 60
 
 
-def new_clips(minutes: int, skip: set[str] = frozenset()) -> list[Clip]:
+def new_clips(minutes: int, skip: set[str] = frozenset(), report: dict | None = None) -> list[Clip]:
     """Clips of the favourite streamers made in the last `minutes` minutes: something just happened.
-    One per streamer (the most watched); streamers where several people clipped something just now come first."""
+    One per streamer (the most watched); streamers where several people clipped something just now come first.
+    `report` gets filled with what was seen, so Discord can show why nothing came."""
+    report = {} if report is None else report
+    report.update(streamers=0, live=[], recent=0, length=0, views=0, used=0, error="")
     users = twitch.user_ids([login for login in favourite_streamers() if login not in skip])
+    report["streamers"] = len(users)
+    try:
+        live = twitch.live_logins([user_id for user_id, _ in users.values()])
+        report["live"] = sorted(users[login][1] for login in live if login in users)
+    except Exception:
+        log.exception("Live streamers ophalen mislukt")
     found = []
     for login, (user_id, name) in users.items():
         try:
             clips = twitch.top_clips(login, user_id, name, minutes / 1440)
-        except Exception:
+        except Exception as exc:
             log.exception("Nieuwe clips ophalen mislukt voor %s", login)
+            report["error"] = str(exc)
             continue
-        new = [
-            c for c in clips
-            if minutes_old(c) <= minutes
-            and config.min_clip_seconds <= c.duration <= config.max_short_seconds + 1
-            and c.view_count >= WATCH_MIN_VIEWS
-            and not db.is_known(c.id)
-        ]
+        new = []
+        for c in clips:
+            if minutes_old(c) > minutes:
+                continue
+            report["recent"] += 1
+            if not config.min_clip_seconds <= c.duration <= config.max_short_seconds + 1:
+                report["length"] += 1
+            elif c.view_count < WATCH_MIN_VIEWS:
+                report["views"] += 1
+            elif db.is_known(c.id):
+                report["used"] += 1
+            else:
+                new.append(c)
         if new:
             best = max(new, key=lambda c: c.view_count)
             best.score = float(len(new))  # how many people clipped something in these minutes

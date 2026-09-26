@@ -50,6 +50,34 @@ def _mode_text() -> str:
     return f"kiesmodus ({count} per dag, jij kiest)" if count else "volledig automatisch"
 
 
+def _watch_text(report: dict) -> str:
+    """What the last /letop look saw, so it is clear why no new clip came."""
+    if not report:
+        return "nog niet gekeken"
+    ago = (datetime.now(timezone.utc) - report["at"]).total_seconds() / 60
+    live = report.get("live") or []
+    lines = [
+        f"laatst gekeken {ago:.0f} min geleden, clips van de laatste {report['minutes']} min",
+        "🔴 live: " + (", ".join(live) if live else "niemand van je streamers"),
+        f"🎬 {report.get('recent', 0)} nieuwe clips gevonden",
+    ]
+    reasons = [
+        f"{report[key]} {text}"
+        for key, text in (("views", f"nog geen {pipeline.WATCH_MIN_VIEWS} views"), ("length", "te kort of te lang"),
+                          ("used", "al gebruikt"))
+        if report.get(key)
+    ]
+    if reasons:
+        lines.append("↳ overgeslagen: " + ", ".join(reasons))
+    if report.get("found"):
+        lines.append(f"✅ {report['found']} gestuurd of onderweg")
+    if report.get("skipped"):
+        lines.append(f"⏳ {report['skipped']} streamer(s) overgeslagen, die kregen net al een clip (10 min)")
+    if report.get("error"):
+        lines.append(f"⚠️ fout bij Twitch: {report['error'][:150]}")
+    return "\n".join(lines)
+
+
 def _tiktok_only(clip_id: str) -> discord.ui.View:
     view = discord.ui.View(timeout=None)
     view.add_item(TikTokButton(clip_id))
@@ -167,6 +195,8 @@ class ShortsBot(discord.Client):
         self.queue_retry_at = datetime.min.replace(tzinfo=timezone.utc)
         self.batch_task: asyncio.Task | None = None
         self.watch_seen: dict[str, datetime] = {}  # /letop: when each streamer last got a new clip sent
+        self.watch_report: dict = {}  # /letop: what the last look saw, for /status
+        self.watch_lock = asyncio.Lock()  # the 3-minute loop and /letop must not send the same clip twice
         register_commands(self)
 
     @property
@@ -560,19 +590,31 @@ class ShortsBot(discord.Client):
         """/letop: every few minutes, new clips of the favourite streamers from the last minutes."""
         if db.get_setting("watch") != "1" or db.get_setting("paused") == "1":
             return
-        if self.lock.locked() or self.making_batch:
-            return  # busy making Shorts; look again next round
+        # Also while the day's batch is being made: a new clip is only new for a few minutes, so it waits for the
+        # lock and slips in between two batch shorts instead of waiting until all of them are done.
+        await self.watch_round()
+
+    async def watch_round(self) -> list[Clip]:
+        async with self.watch_lock:
+            return await self._watch_round()
+
+    async def _watch_round(self) -> list[Clip]:
         now = datetime.now(timezone.utc)
         skip = {login for login, seen in self.watch_seen.items() if now - seen < WATCH_SAME_STREAMER}
         minutes = int(db.get_setting("watch_minutes") or WATCH_MINUTES)
+        report: dict = {}
         try:
-            clips = await asyncio.to_thread(pipeline.new_clips, minutes, skip)
-        except Exception:
+            clips = await asyncio.to_thread(pipeline.new_clips, minutes, skip, report)
+        except Exception as exc:
             log.exception("Nieuwe clips zoeken mislukt")
-            return
+            report["error"] = str(exc)
+            clips = []
+        report.update(at=now, minutes=minutes, found=len(clips), skipped=len(skip))
+        self.watch_report = report
         for clip in clips[:WATCH_PER_ROUND]:
             self.watch_seen[clip.broadcaster_login] = now
             await self.make_candidate(clip, 1, 1, fresh="new")
+        return clips
 
     @watcher.before_loop
     async def _watcher_wait_ready(self):
@@ -747,7 +789,8 @@ def register_commands(bot: ShortsBot):
             f"**Modus:** {_mode_text()}\n"
             f"**Online-tijden:** {', '.join(pipeline.publish_times())} ({ZoneInfo(config.timezone).key})\n"
             f"{waiting}"
-            f"**Ingepland:**\n{planned or 'niks'}\n"
+            + (f"**Letop:**\n{_watch_text(bot.watch_report)}\n" if db.get_setting("watch") == "1" else "")
+            + f"**Ingepland:**\n{planned or 'niks'}\n"
             f"**Laatste uploads:**\n{recent or 'nog geen'}"
         )
 
@@ -859,8 +902,15 @@ def register_commands(bot: ShortsBot):
             return
         await interaction.response.send_message(
             f"👀 Ik let nu elke 3 minuten op **nieuwe clips** van je streamers (gemaakt in de laatste {minuten} min). "
-            "Zodra er iets gebeurt, stuur ik hem hier met **🚀 Nu online**. Uitzetten: `/letop aan:False`."
+            "Zodra er iets gebeurt, stuur ik hem hier met **🚀 Nu online**. Uitzetten: `/letop aan:False`.\n"
+            "Ik kijk meteen een eerste keer..."
         )
+        if db.get_setting("paused") == "1":
+            await interaction.followup.send("⏸️ Maar ik sta op **pauze**, dan kijk ik niet. Typ `/hervat`.")
+            return
+        clips = await bot.watch_round()
+        if not clips:
+            await interaction.followup.send("Nog niks nieuws:\n" + _watch_text(bot.watch_report))
 
     @tree.command(name="actueel", description="Zoek clips die nu net ontploffen, om er als eerste bij te zijn")
     @app_commands.describe(uren="Hoe nieuw (standaard: gemaakt in de laatste 6 uur)")
