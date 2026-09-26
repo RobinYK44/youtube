@@ -172,7 +172,7 @@ indient. Lees altijd de regels van de campagne: die verschillen per maker.
 | `MIN_CLIP_VIEWS` | 3000 | Alleen clips met minstens zoveel views |
 | `MIN_CLIP_SECONDS` | 10 | Alleen clips van minstens zoveel seconden |
 | `MAX_SHORT_SECONDS` | 60 | Maximale lengte van de short |
-| `CLIP_ZOOM` | 1.35 | Hoe ver de clip wordt ingezoomd (1 = niet, hoger = groter beeld maar meer van de zijkanten eraf) |
+| `CLIP_ZOOM` | 1 | Inzoomen (1 = hele beeld; hoger = groter beeld, maar de zijkanten met vaak de webcam van de streamer vallen weg) |
 | `TARGET_SHORT_SECONDS` | 35 | Langere clips worden ingekort tot ongeveer zoveel seconden (het einde blijft) |
 | `COMPILATIONS_PER_DAY` | 1 | Kiesmodus: zoveel compilaties (3 grappige momenten in één short) per dag erbij |
 | `COMPILATION_PART_SECONDS` | 18 | Maximale lengte van elk moment in een compilatie |
