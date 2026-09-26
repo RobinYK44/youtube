@@ -133,7 +133,7 @@ Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met 
 | Instelling | Standaard | Uitleg |
 |---|---|---|
 | `STREAMERS` | jynxzi, kaicenat, ... | Vaste lijst Twitch-namen |
-| `AUTO_DISCOVER_TOP` | 5 | Ook de N grootste live streamers meenemen |
+| `AUTO_DISCOVER_TOP` | 5 | Ook de N grootste live streamers meenemen (hun clips worden alleen gebruikt als je vaste streamers geen nieuwe clips meer hebben) |
 | `DISCOVER_LANGUAGE` | en | Taal van die live streamers (`nl` voor Nederlands) |
 | `PUBLISH_TIMES` | 18:00,21:00,00:00,02:00 | Tijden waarop de shorts online komen (max 6 per dag); middag en avond in Amerika. Ook via `/tijden` |
 | `TIMEZONE` | Europe/Amsterdam | Tijdzone van die tijden |

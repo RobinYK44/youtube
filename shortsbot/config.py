@@ -23,7 +23,7 @@ def _list(name: str, default: str = "") -> list[str]:
     return [s.strip().lower() for s in os.getenv(name, default).split(",") if s.strip()]
 
 
-DEFAULT_STREAMERS = "jynxzi,kaicenat,caseoh_,xqc,stableronaldo,lacy,fanum,adapt"
+DEFAULT_STREAMERS = "jynxzi,stableronaldo,lacy,marlon,kaicenat,caseoh_,xqc,fanum,adapt"
 
 
 @dataclass

@@ -578,8 +578,17 @@ def register_commands(bot: ShortsBot):
     @app_commands.describe(naam="Twitch-loginnaam, bijv. jynxzi")
     @admin
     async def add(interaction: discord.Interaction, naam: str):
-        pipeline.add_streamer(naam)
-        await interaction.response.send_message(f"➕ **{naam}** toegevoegd.")
+        await interaction.response.defer()
+        login = naam.strip().lower().removeprefix("https://").removeprefix("www.").removeprefix("twitch.tv/")
+        found = await asyncio.to_thread(pipeline.twitch.user_ids, [login])
+        if login not in found:
+            await interaction.followup.send(
+                f"❓ Ik kan **{naam}** niet vinden op Twitch. Gebruik de naam uit de link, "
+                "bijv. `jynxzi` van twitch.tv/jynxzi."
+            )
+            return
+        pipeline.add_streamer(login)
+        await interaction.followup.send(f"➕ **{found[login][1]}** toegevoegd.")
 
     @tree.command(name="streamer_verwijderen", description="Haal een streamer weg")
     @app_commands.describe(naam="Twitch-loginnaam")

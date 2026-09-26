@@ -32,10 +32,21 @@ def remove_streamer(login: str) -> None:
     db.set_setting("streamers_remove", ",".join(_csv_setting("streamers_remove") | {login}))
 
 
-def streamer_list() -> list[str]:
-    """Fixed list + streamers added via Discord + today's biggest live streamers."""
+# Clips of today's biggest live streamers rank below every favourite, also in the kiesmodus order.
+DISCOVERED_WEIGHT = 0.25
+
+
+def favourite_streamers() -> list[str]:
+    """Fixed list + streamers added via Discord, minus the ones removed via Discord."""
     removed = _csv_setting("streamers_remove")
-    logins = list(dict.fromkeys(config.streamers + sorted(_csv_setting("streamers_add"))))
+    logins = dict.fromkeys(config.streamers + sorted(_csv_setting("streamers_add")))
+    return [login for login in logins if login not in removed]
+
+
+def streamer_list() -> list[str]:
+    """Favourite streamers + today's biggest live streamers."""
+    removed = _csv_setting("streamers_remove")
+    logins = favourite_streamers()
     if config.auto_discover_top > 0:
         try:
             for s in twitch.top_live_streamers(config.auto_discover_top, config.discover_language):
@@ -82,6 +93,7 @@ def viral_score(clip: Clip, streamer_median: float, now: datetime | None = None)
 
 def find_candidates() -> list[Clip]:
     logins = streamer_list()
+    favourites = set(favourite_streamers())
     users = twitch.user_ids(logins)
     candidates = []
     now = datetime.now(timezone.utc)
@@ -94,6 +106,8 @@ def find_candidates() -> list[Clip]:
         median = statistics.median([c.view_count for c in clips]) if clips else 1
         for clip in clips:
             clip.score = viral_score(clip, median, now)
+            if login not in favourites:
+                clip.score = round(clip.score * DISCOVERED_WEIGHT, 1)
         candidates += [
             c
             for c in clips
@@ -109,7 +123,8 @@ def find_candidates() -> list[Clip]:
         games = {}
     for clip in candidates:
         clip.game = games.get(clip.game_id, "")
-    candidates.sort(key=lambda c: c.score, reverse=True)
+    # Favourites always first; the live top streamers only fill up when the favourites run out.
+    candidates.sort(key=lambda c: (c.broadcaster_login in favourites, c.score), reverse=True)
     return candidates
 
 
