@@ -34,6 +34,7 @@ MOODS = {
     "music": ["sing", "song", "music", "dance", "rap", "🎵", "🎶"],
 }
 FILLER = ["funny", "twitch", "streamer", "viral", "clips", "gaming"]
+YOUTUBE_FILLER = ["funny", "viral", "youtube", "clips", "entertainment"]
 
 
 def _hashtag(text: str) -> str:
@@ -87,7 +88,10 @@ def better_title(clip) -> str:
 
 
 def make_hashtags(clip, minimum: int = 6, maximum: int = 8) -> list[str]:
-    """Hashtags without '#', most specific first. Always starts with 'shorts'."""
+    """Hashtags without '#', most specific first. Always starts with 'shorts', except for a Vyro campaign,
+    which only allows its own hashtags."""
+    if getattr(clip, "tags", None):
+        return list(clip.tags)
     parts = getattr(clip, "parts", None) or [clip]
     found = list(dict.fromkeys(mood for part in parts for mood in moods(part.title)))
     if len(parts) > 1:
@@ -98,7 +102,7 @@ def make_hashtags(clip, minimum: int = 6, maximum: int = 8) -> list[str]:
         *found,
         *(_hashtag(getattr(part, "game", "") or "") for part in parts),
     ]
-    for filler in FILLER:
+    for filler in FILLER if getattr(clip, "source", "twitch") == "twitch" else YOUTUBE_FILLER:
         if found and filler == "funny":
             continue  # a scary or rage clip should not also be called funny
         if len([t for t in dict.fromkeys(tags) if t]) >= minimum:
@@ -107,11 +111,19 @@ def make_hashtags(clip, minimum: int = 6, maximum: int = 8) -> list[str]:
     return [t for t in dict.fromkeys(tags) if t][:maximum]
 
 
+def credit_link(clip) -> str:
+    if clip.source == "twitch":
+        return f"twitch.tv/{clip.broadcaster_login}"
+    return f"youtube.com/@{clip.broadcaster_login}"
+
+
 def tiktok_caption(clip) -> str:
     """Text for TikTok: title, credits and hashtags, with #fyp instead of #shorts."""
+    if clip.tags:
+        return f"{clip.title}\n\n" + " ".join(f"#{t}" for t in clip.tags)
     tags = ["fyp", "foryou", *(t for t in make_hashtags(clip) if t != "shorts")]
     names = ", ".join(p.broadcaster_name for p in clip.parts) if clip.parts else clip.broadcaster_name
-    credit = " ".join(f"twitch.tv/{p.broadcaster_login}" for p in (clip.parts or [clip]))
+    credit = " ".join(credit_link(p) for p in (clip.parts or [clip]))
     text = f"{clip.title} | {names}\n\nCredits: {credit}\n\n" + " ".join(f"#{t}" for t in dict.fromkeys(tags))
     return text[:2200]
 
@@ -178,6 +190,13 @@ def _credentials() -> Credentials:
 
 def build_metadata(clip) -> dict:
     hashtags = make_hashtags(clip)
+    if clip.tags:  # Vyro campaign: only its hashtags, nothing else
+        tag_text = " ".join(f"#{t}" for t in hashtags)
+        return {
+            "title": clip.title[: 99 - len(tag_text)].rstrip() + " " + tag_text,
+            "description": f"{clip.title}\n\nFrom {clip.broadcaster_name}: {clip.url.split('&t=')[0]}\n\n{tag_text}",
+            "tags": [clip.broadcaster_name],
+        }
     title = clip.title.strip() or f"{clip.broadcaster_name} moment"
     named = clip.parts or clip.broadcaster_name.lower() in title.lower()
     suffix = " #shorts" if named else f" | {clip.broadcaster_name} #shorts"
@@ -189,12 +208,12 @@ def build_metadata(clip) -> dict:
         )
     else:
         credits = (
-            f"Credits: {clip.broadcaster_name} — https://twitch.tv/{clip.broadcaster_login}\n"
+            f"Credits: {clip.broadcaster_name} — https://{credit_link(clip)}\n"
             f"Originele clip: {clip.url}\n"
         )
     description = f"{clip.title}\n\n{credits}\n" + " ".join(f"#{tag}" for tag in hashtags)
     names = [part.broadcaster_name for part in clip.parts] or [clip.broadcaster_name, clip.broadcaster_login]
-    tags = list(dict.fromkeys([*names, *hashtags, "twitch", "clips"]))
+    tags = list(dict.fromkeys([*names, *hashtags, "twitch" if clip.source == "twitch" else "youtube", "clips"]))
     if getattr(clip, "game", ""):
         tags.append(clip.game)
     return {"title": title, "description": description, "tags": tags}
@@ -208,7 +227,8 @@ def upload(video_path, clip, publish_at: datetime | None = None) -> str:
     if publish_at and config.youtube_privacy == "public":
         status["privacyStatus"] = "private"
         status["publishAt"] = publish_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    body = {"snippet": {**meta, "categoryId": "20"}, "status": status}  # 20 = Gaming
+    category = "20" if clip.source == "twitch" else "24"  # 20 = Gaming, 24 = Entertainment
+    body = {"snippet": {**meta, "categoryId": category}, "status": status}
     media = MediaFileUpload(str(video_path), mimetype="video/mp4", resumable=True, chunksize=8 * 1024 * 1024)
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
     response = None

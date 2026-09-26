@@ -282,6 +282,11 @@ class ShortsBot(discord.Client):
         if tiktok_copy:
             await self.send_tiktok_copy(clip, tiktok_copy, slot)
         link = f"https://youtube.com/shorts/{video_id}"
+        if clip.source == "vyro":
+            await self.say(
+                f"💰 **Vyro:** dien deze link in bij de campagne van {clip.broadcaster_name}: {link}\n"
+                "Zet je hem ook op TikTok? Dien die link dan ook in."
+            )
         if slot and slot > datetime.now(timezone.utc) + timedelta(minutes=15):
             return True, f"📅 Geüpload! Komt online op {_local_time(slot)}: {link}"
         return True, f"✅ Geüpload! {link}"
@@ -325,7 +330,7 @@ class ShortsBot(discord.Client):
     async def make_batch(self, count: int, header: str) -> bool:
         """Render `count` new candidates and post them. `header` may contain {n}. False when none were found."""
         try:
-            clips = await asyncio.to_thread(pipeline.pick_candidates, count)
+            clips = await asyncio.to_thread(pipeline.pick_mixed, count)
         except Exception as exc:
             log.exception("Clips zoeken mislukt")
             await self.say(f"⚠️ Clips zoeken mislukt: {_error_text(exc)}")
@@ -343,6 +348,26 @@ class ShortsBot(discord.Client):
             await self.make_candidate(clip, number, len(clips))
         await self.say(f"👍 Alle {len(clips)} shorts staan klaar. Kies je favorieten!")
         return True
+
+    async def clip_video(self, url: str, count: int, vyro: bool, hashtags: str) -> None:
+        """/knip: moments from one YouTube video as candidates to pick from."""
+        try:
+            clips, title = await asyncio.to_thread(pipeline.clip_video, url, count, vyro, hashtags)
+        except Exception as exc:
+            log.exception("YouTube-video ophalen mislukt")
+            await self.say(f"⚠️ Kon deze video niet ophalen: {_error_text(exc)}")
+            return
+        if not clips:
+            await self.say(
+                f"🔍 Bij **{title}** zie ik (nog) geen 'meest herbekeken'-grafiek, of alle goede momenten zijn "
+                "al gebruikt. Die grafiek komt pas als een video genoeg views heeft; probeer het later nog eens."
+            )
+            return
+        tags = " ".join("#" + t for t in clips[0].tags)
+        extra = f" in Vyro-stijl ({tags}, geen eigen logo's)" if vyro else ""
+        await self.say(f"✂️ Ik knip **{len(clips)} momenten** uit **{title}**{extra}. Kies met **✅**.")
+        for number, clip in enumerate(clips, 1):
+            await self.make_candidate(clip, number, len(clips))
 
     async def make_compilations(self, count: int) -> None:
         """Compilations of 3 funny moments, posted as candidates to pick from."""
@@ -381,9 +406,17 @@ class ShortsBot(discord.Client):
                 for i, part in enumerate(clip.parts)
             )
             text = f"🎞️ **Compilatie {number}/{total}** · **{clip.title}**{lines}\n{hashtags}"
+        elif clip.source != "twitch":
+            label = "💰 **Vyro** · " if clip.source == "vyro" else "▶️ **YouTube** · "
+            minute, second = divmod(int(clip.start), 60)
+            text = (
+                f"{label}**{number}/{total}** · **{clip.title}** — {clip.broadcaster_name}"
+                f"\n🔥 meest herbekeken moment op {minute}:{second:02d} (video: {clip.view_count:,} views)"
+                f"\n{hashtags}\n<{clip.url}>"
+            )
         else:
             text = (
-                f"🎬 **{number}/{total}** · **{clip.title}** — {clip.broadcaster_name}"
+                f"🟣 **Twitch** · **{number}/{total}** · **{clip.title}** — {clip.broadcaster_name}"
                 f"\n🔥 {clip.view_count:,} views in {pipeline.age_hours(clip):.0f} uur\n{hashtags}\n<{clip.url}>"
             )
         try:
@@ -588,6 +621,46 @@ def register_commands(bot: ShortsBot):
         streams = await asyncio.to_thread(pipeline.twitch.top_live_streamers, 10, config.discover_language)
         lines = [f"{i}. **{s['name']}** — {s['viewers']:,} kijkers ({s['game']})" for i, s in enumerate(streams, 1)]
         await interaction.followup.send("📈 **Nu live op Twitch:**\n" + "\n".join(lines))
+
+    @tree.command(name="knip", description="Knip de beste momenten uit een YouTube-video (ook voor Vyro)")
+    @app_commands.describe(
+        link="Link naar de YouTube-video",
+        aantal="Hoeveel momenten (standaard 5)",
+        vyro="Voor een Vyro-campagne: alleen de hashtags van de campagne, geen eigen logo's",
+        hashtags="Vyro: hashtags van de campagne, bijv. #mrbeast #mrbeastpartner (leeg = automatisch)",
+    )
+    @admin
+    async def cut(
+        interaction: discord.Interaction, link: str, aantal: app_commands.Range[int, 1, 10] = 5,
+        vyro: bool = False, hashtags: str = "",
+    ):
+        if bot.making_batch:
+            await interaction.response.send_message("⏳ Ik ben nog bezig met shorts maken. Probeer het zo nog eens.")
+            return
+        await interaction.response.send_message("✂️ Ik zoek de beste momenten, even geduld...")
+        bot.start_batch(bot.clip_video(link, aantal, vyro, hashtags))
+
+    @tree.command(name="youtubers", description="Van welke YouTube-kanalen ik momenten knip")
+    @admin
+    async def youtubers(interaction: discord.Interaction):
+        channels = pipeline.youtube_channels()
+        await interaction.response.send_message(
+            "▶️ **YouTubers:** " + (", ".join(channels) if channels else "geen (alleen Twitch)")
+        )
+
+    @tree.command(name="youtuber_toevoegen", description="Voeg een YouTube-kanaal toe om momenten uit te knippen")
+    @app_commands.describe(naam="Naam uit de link, bijv. MrBeast van youtube.com/@MrBeast")
+    @admin
+    async def add_youtuber(interaction: discord.Interaction, naam: str):
+        pipeline.add_youtube_channel(naam.split("@")[-1].split("/")[0])
+        await interaction.response.send_message(f"➕ **{naam}** toegevoegd.")
+
+    @tree.command(name="youtuber_verwijderen", description="Haal een YouTube-kanaal weg")
+    @app_commands.describe(naam="Naam uit de link, bijv. MrBeast")
+    @admin
+    async def remove_youtuber(interaction: discord.Interaction, naam: str):
+        pipeline.remove_youtube_channel(naam.split("@")[-1].split("/")[0])
+        await interaction.response.send_message(f"➖ **{naam}** verwijderd.")
 
     @tree.command(name="streamers", description="Van welke streamers ik clips zoek")
     @admin

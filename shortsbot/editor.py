@@ -79,8 +79,8 @@ def _end_card(font: str, work_dir: Path, length: float) -> list[str]:
     start = max(0.0, length - 3)
     fade = f"if(lt(t,{start}),0,min(1,(t-{start})/0.4))"
     cards = [
-        ("LIKE & SUBSCRIBE", 76, 1330, ":box=1:boxcolor=0xE62117:boxborderw=22"),
-        ("for more clips!", 48, 1450, ":borderw=4:bordercolor=black"),
+        ("LIKE & SUBSCRIBE", 76, 1400, ":box=1:boxcolor=0xE62117:boxborderw=22"),
+        ("for more clips!", 48, 1515, ":borderw=4:bordercolor=black"),
     ]
     filters = []
     for i, (text, size, y, style) in enumerate(cards):
@@ -124,7 +124,8 @@ def render_short(
     if font:
         lines = textwrap.wrap(_plain(title), width=22)[:3]
         texts = [(line, 64, 200 + i * 80) for i, line in enumerate(lines)]
-        texts.append((credit, 44, "h-320"))
+        if credit:
+            texts.append((credit, 44, "h-320"))
         for i, (text, size, y) in enumerate(texts):
             text_file = work_dir / f"text{i}.txt"
             text_file.write_text(text, encoding="utf-8")
@@ -229,4 +230,19 @@ def make_short(clip, output_dir: Path) -> Path:
         work = Path(tmp)
         source = download(clip.url, work)
         render_short(source, output, clip.title, f"twitch.tv/{clip.broadcaster_login}", work)
+    return output
+
+
+def make_youtube_short(clip, output_dir: Path) -> Path:
+    """A moment from a YouTube video. Vyro clips get no end card or extra text: campaigns forbid that."""
+    from . import ytclips
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output = output_dir / f"{clip.id}.mp4"
+    vyro = clip.source == "vyro"
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        source = ytclips.download(clip, work, ffmpeg_exe())
+        credit = "" if vyro else f"youtube.com/@{clip.broadcaster_login}"
+        render_short(source, output, clip.title, credit, work, limit=config.max_short_seconds, end_card=not vyro)
     return output

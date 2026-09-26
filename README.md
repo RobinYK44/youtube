@@ -121,6 +121,9 @@ TikTok-app (melding/inbox) en de tekst naar Discord; jij drukt in TikTok op post
 | `/kiesmodus aantal` | Elke dag zoveel shorts maken waar jij uit kiest (0 = volledig automatisch) |
 | `/compilatie aantal` | Short met 3 grappige momenten van verschillende streamers (#3, #2, #1) om uit te kiezen |
 | `/meer aantal` | Kiesmodus: nu meteen extra shorts zoeken om uit te kiezen (standaard 10) |
+| `/knip link aantal vyro hashtags` | De beste momenten uit een YouTube-video knippen, om uit te kiezen. Met `vyro:True` in Vyro-stijl (alleen de hashtags van de campagne, geen eigen logo's) |
+| `/youtubers` | Van welke YouTube-kanalen de bot momenten knipt |
+| `/youtuber_toevoegen naam` / `/youtuber_verwijderen naam` | YouTube-kanaal toevoegen of weghalen (naam uit de link, bijv. `MrBeast`) |
 | `/top` | De 10 grootste live streamers op dit moment |
 | `/streamers` | Van welke streamers de bot clips zoekt |
 | `/streamer_toevoegen naam` | Streamer toevoegen (Twitch-naam) |
@@ -137,6 +140,18 @@ Met **❌ Afkeuren** gooi je een short weg; die wordt nooit gebruikt, ook niet a
 Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met de meeste views.
 `/kiesmodus aantal:0` zet hem weer op volledig automatisch.
 
+### YouTube-momenten en Vyro
+Naast Twitch-clips knipt de bot ook momenten uit de nieuwste video's en streams van YouTube-kanalen (standaard
+IShowSpeed en MrBeast). Hij pakt de stukken die het vaakst worden teruggekeken (de "meest herbekeken"-grafiek van
+YouTube) en downloadt alleen dat stukje. Automatisch wisselt hij af: de ene short Twitch, de volgende YouTube; in de
+kiesmodus is de helft van de keuzes YouTube (▶️) en de helft Twitch (🟣).
+
+**Vyro** (vyro.com) betaalt per 1000 views voor clips van campagnes, bijvoorbeeld van een nieuwe MrBeast-video.
+Staat er een campagne open, plak dan de link van die video: `/knip link:https://youtu.be/... vyro:True`.
+De bot zet alleen de hashtags van de campagne erbij (standaard `#mrbeast #mrbeastpartner`, of wat je bij
+`hashtags` invult), zonder "LIKE & SUBSCRIBE" of eigen tekst. Na de upload stuurt hij de link die je bij Vyro
+indient. Lees altijd de regels van de campagne: die verschillen per maker.
+
 ## Instellingen (`.env`)
 
 | Instelling | Standaard | Uitleg |
@@ -149,6 +164,8 @@ Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met 
 | `CANDIDATES_PER_DAY` | 0 | Kiesmodus: zoveel shorts per dag maken om uit te kiezen (ook via `/kiesmodus`) |
 | `YOUTUBE_PRIVACY` | public | `public`, `unlisted` of `private` |
 | `CLIP_LOOKBACK_DAYS` | 2 | Hoe ver terug zoeken naar clips |
+| `CLIP_LOOKBACK_MAX_DAYS` | 14 | Hebben je vaste streamers te weinig nieuwe clips, dan zoekt hij zo ver terug naar populaire oudere clips |
+| `YOUTUBE_CHANNELS` | ishowspeed,mrbeast | YouTube-kanalen om momenten uit te knippen (leeg = alleen Twitch). Ook via `/youtuber_toevoegen` |
 | `MIN_CLIP_VIEWS` | 3000 | Alleen clips met minstens zoveel views |
 | `MIN_CLIP_SECONDS` | 10 | Alleen clips van minstens zoveel seconden |
 | `MAX_SHORT_SECONDS` | 60 | Maximale lengte van de short |

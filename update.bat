@@ -9,6 +9,8 @@ for /f "usebackq delims=" %%F in ("files.txt") do (
 )
 echo Onderdelen bijwerken...
 python -m pip install -q -r requirements.txt
+rem YouTube verandert vaak iets: altijd de nieuwste yt-dlp.
+python -m pip install -q -U yt-dlp
 curl -fsSL -o update.new "%BASE%/update.bat"
 echo.
 echo Klaar! Dubbelklik nu op start.bat om de bot te starten.

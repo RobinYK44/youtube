@@ -21,7 +21,9 @@ _conn.executescript(
     """
 )
 _columns = [row["name"] for row in _conn.execute("PRAGMA table_info(clips)")]
-for _name in ("publish_at", "url", "broadcaster_name", "game", "score", "parts", "tiktok_status", "tiktok_id"):  # added after the first release
+for _name in (
+    "publish_at", "url", "broadcaster_name", "game", "score", "parts", "tiktok_status", "tiktok_id", "source", "tags",
+):  # added after the first release
     if _name not in _columns:
         _conn.execute(f"ALTER TABLE clips ADD COLUMN {_name} TEXT DEFAULT ''")
 # Older versions had approval buttons that did not survive a restart.
@@ -41,11 +43,12 @@ def mark(clip, status: str, youtube_id: str = "", publish_at: str = "") -> None:
     _conn.execute(
         "INSERT OR REPLACE INTO clips"
         " (id, broadcaster, title, views, status, youtube_id, updated_at, publish_at, url, broadcaster_name, game, score,"
-        " parts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " parts, source, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             clip.id, clip.broadcaster_login, clip.title, clip.view_count, status, youtube_id, _now(),
             publish_at, clip.url, clip.broadcaster_name, getattr(clip, "game", ""), str(getattr(clip, "score", "")),
-            ",".join(part.id for part in getattr(clip, "parts", [])),
+            ",".join(part.id for part in getattr(clip, "parts", [])), getattr(clip, "source", "twitch"),
+            ",".join(getattr(clip, "tags", [])),
         ),
     )
     _conn.commit()
@@ -53,6 +56,11 @@ def mark(clip, status: str, youtube_id: str = "", publish_at: str = "") -> None:
 
 def get(clip_id: str) -> sqlite3.Row | None:
     return _conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()
+
+
+def known_ids(prefix: str) -> list[str]:
+    rows = _conn.execute("SELECT id FROM clips WHERE substr(id, 1, ?) = ?", (len(prefix), prefix))  # no LIKE: _ is a wildcard
+    return [row["id"] for row in rows]
 
 
 def candidates() -> list[sqlite3.Row]:

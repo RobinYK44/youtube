@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import db, editor, youtube
+from . import db, editor, youtube, ytclips
 from .config import DATA_DIR, config
 from .twitch import Clip, Twitch
 
@@ -99,7 +99,7 @@ def viral_score(clip: Clip, streamer_median: float, now: datetime | None = None)
     return round(score, 1)
 
 
-def find_candidates() -> list[Clip]:
+def find_candidates(days: int | None = None) -> list[Clip]:
     logins = streamer_list()
     favourites = set(favourite_streamers())
     users = twitch.user_ids(logins)
@@ -107,7 +107,7 @@ def find_candidates() -> list[Clip]:
     now = datetime.now(timezone.utc)
     for login, (user_id, name) in users.items():
         try:
-            clips = twitch.top_clips(login, user_id, name, config.clip_lookback_days)
+            clips = twitch.top_clips(login, user_id, name, days or config.clip_lookback_days)
         except Exception:
             log.exception("Clips ophalen mislukt voor %s", login)
             continue
@@ -139,9 +139,26 @@ def find_candidates() -> list[Clip]:
     return candidates
 
 
+def twitch_candidates(needed: int) -> list[Clip]:
+    """Fresh clips first. When the favourites have fewer than `needed` new ones, add popular clips from the
+    last CLIP_LOOKBACK_MAX_DAYS days: a clip with lots of views two weeks ago can still do well as a Short."""
+    found = find_candidates()
+    favourites = set(favourite_streamers())
+    if sum(c.broadcaster_login in favourites for c in found) >= needed:
+        return found
+    if config.clip_lookback_max_days <= config.clip_lookback_days:
+        return found
+    seen = {c.id for c in found}
+    older = [c for c in find_candidates(config.clip_lookback_max_days) if c.id not in seen]
+    fresh_favourites = [c for c in found if c.broadcaster_login in favourites]
+    older_favourites = [c for c in older if c.broadcaster_login in favourites]
+    rest = [c for c in found + older if c.broadcaster_login not in favourites]
+    return fresh_favourites + older_favourites + rest
+
+
 def pick_candidates(count: int, per_streamer: int = 3) -> list[Clip]:
     """Highest-scoring unused clips, at most `per_streamer` of each streamer for variety."""
-    found = find_candidates()
+    found = twitch_candidates(count)
     picked, per = [], {}
     for clip in found:
         if per.get(clip.broadcaster_login, 0) < per_streamer:
@@ -170,7 +187,7 @@ def is_funny(clip: Clip) -> bool:
 
 def pick_compilation(count: int = 3) -> list[Clip] | None:
     """`count` short, funny clips of different streamers, worst first so the best one is #1 at the end."""
-    found = [c for c in find_candidates() if c.duration <= 35]
+    found = [c for c in twitch_candidates(count) if c.duration <= 35]
     ordered = [c for c in found if is_funny(c)] + [c for c in found if not is_funny(c)]
     parts, streamers = [], set()
     for clip in ordered:
@@ -197,6 +214,79 @@ def compilation_clip(parts: list[Clip]) -> Clip:
         score=round(sum(p.score for p in parts) / len(parts), 1),
         parts=parts,
     )
+
+
+def youtube_channels() -> list[str]:
+    """YouTube channels to clip from: .env list + added via Discord, minus removed via Discord."""
+    removed = _csv_setting("youtube_remove")
+    channels = dict.fromkeys(config.youtube_channels + sorted(_csv_setting("youtube_add")))
+    return [c for c in channels if c not in removed]
+
+
+def add_youtube_channel(name: str) -> None:
+    name = name.strip().lstrip("@").lower()
+    db.set_setting("youtube_add", ",".join(_csv_setting("youtube_add") | {name}))
+    db.set_setting("youtube_remove", ",".join(_csv_setting("youtube_remove") - {name}))
+
+
+def remove_youtube_channel(name: str) -> None:
+    name = name.strip().lstrip("@").lower()
+    db.set_setting("youtube_add", ",".join(_csv_setting("youtube_add") - {name}))
+    db.set_setting("youtube_remove", ",".join(_csv_setting("youtube_remove") | {name}))
+
+
+def moment_used(video_id: str, start: float) -> bool:
+    """True when this moment, or one overlapping it, was already made into a Short."""
+    for known in db.known_ids(f"yt-{video_id}-"):
+        other = known.rsplit("-", 1)[1]
+        if other.isdigit() and abs(int(other) - start) < ytclips.MOMENT_SECONDS:
+            return True
+    return False
+
+
+def youtube_candidates(count: int, per_video: int = 2) -> list[Clip]:
+    """The most re-watched unused moments from the newest videos and streams of the YouTube channels."""
+    found = []
+    for channel in youtube_channels():
+        for url in ytclips.latest_videos(channel):
+            try:
+                info = ytclips.video_info(url)
+            except Exception:
+                log.exception("YouTube-video ophalen mislukt: %s", url)
+                continue
+            if ytclips.age_days(info) > config.clip_lookback_max_days:
+                continue
+            moments = [(s, h) for s, h in ytclips.moments(info, 4) if not moment_used(info["id"], s)]
+            found += [ytclips.make_clip(info, s, h) for s, h in moments[:per_video]]
+    found = list({c.id: c for c in found}.values())  # a stream can show up on both the videos and streams tab
+    found.sort(key=lambda c: c.score, reverse=True)
+    return found[:count]
+
+
+def clip_video(url: str, count: int, vyro: bool = False, hashtags: str = "") -> tuple[list[Clip], str]:
+    """Moments from one YouTube video (/knip). Returns (clips, video title)."""
+    info = ytclips.video_info(url)
+    tags = []
+    if vyro:
+        handle = (info.get("uploader_id") or info.get("channel") or "").lstrip("@").lower()
+        tags = [t.lstrip("#").lower() for t in hashtags.replace(",", " ").split()] or [handle, handle + "partner"]
+    moments = [(s, h) for s, h in ytclips.moments(info, count + 10) if not moment_used(info["id"], s)][:count]
+    clips = [ytclips.make_clip(info, s, h, "vyro" if vyro else "youtube", tags) for s, h in moments]
+    return clips, info.get("title") or url
+
+
+def pick_mixed(count: int) -> list[Clip]:
+    """Kiesmodus: half Twitch clips, half YouTube moments (fewer YouTube when there are not enough)."""
+    try:
+        youtube_clips = youtube_candidates(count // 2) if youtube_channels() else []
+    except Exception:
+        log.exception("YouTube-clips zoeken mislukt")
+        youtube_clips = []
+    twitch_clips = pick_candidates(count - len(youtube_clips))
+    mixed = []
+    for i in range(max(len(youtube_clips), len(twitch_clips))):
+        mixed += twitch_clips[i : i + 1] + youtube_clips[i : i + 1]
+    return mixed
 
 
 def publish_times() -> list[str]:
@@ -240,6 +330,8 @@ def clip_from_row(row) -> Clip:
         game=row["game"] or "",
         score=float(row["score"] or 0),
         parts=parts,
+        source=row["source"] or "twitch",
+        tags=[t for t in (row["tags"] or "").split(",") if t],
     )
 
 
@@ -248,8 +340,29 @@ def video_path(clip_id: str) -> Path:
 
 
 def pick_clip() -> Clip | None:
+    """Alternate between a Twitch clip and a YouTube moment; use the other one when one has nothing."""
+    last = db.recent_uploads(1)
+    youtube_first = bool(last) and (last[0]["source"] or "twitch") == "twitch"
+    order = (pick_youtube_clip, pick_twitch_clip) if youtube_first else (pick_twitch_clip, pick_youtube_clip)
+    for pick in order:
+        try:
+            clip = pick()
+        except Exception:
+            log.exception("Clips zoeken mislukt in %s", pick.__name__)
+            clip = None
+        if clip:
+            return clip
+    return None
+
+
+def pick_youtube_clip() -> Clip | None:
+    found = youtube_candidates(1)
+    return found[0] if found else None
+
+
+def pick_twitch_clip() -> Clip | None:
     """Highest-scoring clip, but avoid posting the same streamer twice in a row."""
-    candidates = find_candidates()
+    candidates = twitch_candidates(1)
     if not candidates:
         return None
     recent = [row["broadcaster"] for row in db.recent_uploads(2)]
@@ -279,6 +392,8 @@ def open_slots(now: datetime | None = None, hours: int = 24) -> list[datetime]:
 
 
 def render(clip: Clip) -> Path:
+    if clip.source != "twitch":
+        return editor.make_youtube_short(clip, OUTPUT_DIR)
     if clip.parts:
         return editor.make_compilation(clip, OUTPUT_DIR)
     return editor.make_short(clip, OUTPUT_DIR)

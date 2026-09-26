@@ -22,6 +22,9 @@ class Clip:
     game: str = ""
     score: float = 0.0  # viral score, see pipeline.viral_score
     parts: list["Clip"] = field(default_factory=list)  # set for a compilation of several clips
+    source: str = "twitch"  # twitch / youtube / vyro (a YouTube clip for a paid Vyro campaign)
+    start: float = 0.0  # youtube: where the moment starts in the video
+    tags: list[str] = field(default_factory=list)  # vyro: the campaign's hashtags, used instead of our own
 
 
 class Twitch:

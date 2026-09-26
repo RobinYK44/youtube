@@ -62,6 +62,10 @@ class Config:
 
     clip_lookback_days: int = _int("CLIP_LOOKBACK_DAYS", 2)
     min_clip_views: int = _min_clip_views()
+    # When the favourite streamers have too few new clips, look this far back (popular older clips still do well).
+    clip_lookback_max_days: int = _int("CLIP_LOOKBACK_MAX_DAYS", 14)
+    # YouTube channels to clip from (their newest videos and streams). Can be changed with /youtuber_toevoegen.
+    youtube_channels: list[str] = field(default_factory=lambda: _list("YOUTUBE_CHANNELS", "ishowspeed,mrbeast"))
     clip_zoom: float = float(os.getenv("CLIP_ZOOM", "").strip() or 1.35)
     min_clip_seconds: int = _int("MIN_CLIP_SECONDS", 10)
     max_short_seconds: int = _int("MAX_SHORT_SECONDS", 60)

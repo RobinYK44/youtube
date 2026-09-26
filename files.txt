@@ -13,3 +13,4 @@ shortsbot/pipeline.py
 shortsbot/tiktok.py
 shortsbot/twitch.py
 shortsbot/youtube.py
+shortsbot/ytclips.py
