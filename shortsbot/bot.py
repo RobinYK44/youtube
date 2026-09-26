@@ -95,6 +95,27 @@ class RejectButton(discord.ui.DynamicItem[discord.ui.Button], template=r"reject:
             await interaction.followup.send(text, ephemeral=True)
 
 
+class TikTokButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tiktok:(?P<clip_id>.+)"):
+    """'TikTok' button under a candidate: get the TikTok version of this Short, it stays available for YouTube."""
+
+    def __init__(self, clip_id: str):
+        super().__init__(
+            discord.ui.Button(
+                label="TikTok", style=discord.ButtonStyle.secondary, emoji="📱", custom_id=f"tiktok:{clip_id}"
+            )
+        )
+        self.clip_id = clip_id
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(match["clip_id"])
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        text = await interaction.client.candidate_tiktok(self.clip_id)
+        await interaction.followup.send(text, ephemeral=True)
+
+
 class ShortsBot(discord.Client):
     def __init__(self):
         super().__init__(intents=discord.Intents.default())
@@ -117,7 +138,7 @@ class ShortsBot(discord.Client):
         self.batch_task = asyncio.create_task(coro)
 
     async def setup_hook(self):
-        self.add_dynamic_items(PickButton, RejectButton)
+        self.add_dynamic_items(PickButton, RejectButton, TikTokButton)
         self.scheduler.start()
 
     async def on_ready(self):
@@ -315,6 +336,31 @@ class ShortsBot(discord.Client):
         await self.say(text)
         return ok
 
+    async def candidate_tiktok(self, clip_id: str) -> str:
+        """TikTok version of a candidate. The candidate itself can still be picked for YouTube."""
+        row = db.get(clip_id)
+        video = pipeline.video_path(clip_id)
+        if row is None or row["status"] != "candidate" or not video.exists():
+            return "Deze short is al gebruikt of verlopen, dus ik heb het bestand niet meer."
+        copy = await asyncio.to_thread(pipeline.tiktok_version, video)
+        if copy is None:
+            return "⚠️ TikTok-versie maken mislukt."
+        await self.send_tiktok_copy(pipeline.clip_from_row(row), copy, None)
+        return "📱 Staat hieronder in het kanaal!"
+
+    async def tiktok_from_link(self, url: str) -> None:
+        """/tiktok_clip: one specific Twitch clip or YouTube video, made into a TikTok video."""
+        async with self.lock:
+            try:
+                clip = await asyncio.to_thread(pipeline.clip_from_link, url)
+                await self.say(f"📱 Bezig met **{clip.title}** van **{clip.broadcaster_name}** voor TikTok...")
+                video = await asyncio.to_thread(pipeline.render, clip)
+            except Exception as exc:
+                log.exception("TikTok-video van link mislukt")
+                await self.say(f"⚠️ Kon deze video niet maken: {_error_text(exc)}")
+                return
+        await self.send_tiktok_only(clip, video)
+
     async def send_tiktok_only(self, clip: Clip, video) -> bool:
         if pipeline.tiktok_enabled():  # automatic TikTok: post it right away
             db.mark(clip, "tiktok")  # used, so it will not show up again for YouTube
@@ -461,6 +507,7 @@ class ShortsBot(discord.Client):
         view = discord.ui.View(timeout=None)
         view.add_item(PickButton(clip.id))
         view.add_item(RejectButton(clip.id))
+        view.add_item(TikTokButton(clip.id))
         hashtags = " ".join("#" + t for t in make_hashtags(clip))
         if clip.parts:
             lines = "".join(
@@ -685,6 +732,18 @@ def register_commands(bot: ShortsBot):
             return
         await interaction.response.send_message("📱 Ik ga meteen een short maken voor TikTok...")
         bot.background = asyncio.create_task(bot.run_cycle(tiktok_only=True))
+
+    @tree.command(name="tiktok_clip", description="Maak van een bepaalde Twitch-clip of YouTube-video een TikTok-video")
+    @app_commands.describe(
+        link="Link van een Twitch-clip, of een YouTube-video (met &t=90s begint hij op die tijd)"
+    )
+    @admin
+    async def tiktok_clip(interaction: discord.Interaction, link: str):
+        if bot.lock.locked():
+            await interaction.response.send_message("⏳ Ik ben al bezig met een short, probeer het zo nog eens.")
+            return
+        await interaction.response.send_message("📱 Ik ga ermee aan de slag...")
+        bot.background = asyncio.create_task(bot.tiktok_from_link(link))
 
     @tree.command(name="top", description="De grootste live streamers op dit moment")
     @admin

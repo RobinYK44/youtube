@@ -67,6 +67,24 @@ class Twitch:
             for s in streams[:count]
         ]
 
+    def clip_by_id(self, clip_id: str) -> Clip | None:
+        """One clip by its id (the last part of a clip link)."""
+        data = self._get("clips", {"id": clip_id})
+        if not data:
+            return None
+        c = data[0]
+        return Clip(
+            id=c["id"],
+            url=c["url"],
+            title=c["title"],
+            broadcaster_login=c["broadcaster_name"].lower(),
+            broadcaster_name=c["broadcaster_name"],
+            view_count=c["view_count"],
+            duration=float(c["duration"]),
+            created_at=c["created_at"],
+            game_id=c.get("game_id", ""),
+        )
+
     def user_ids(self, logins: list[str]) -> dict[str, tuple[str, str]]:
         """Map login -> (user id, display name). Unknown logins are skipped."""
         result = {}

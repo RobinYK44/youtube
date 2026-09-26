@@ -125,6 +125,7 @@ TikTok-app (melding/inbox) en de tekst naar Discord; jij drukt in TikTok op post
 | `/statistieken` | De best lopende shorts, en van welke streamers de bot meer of minder kiest |
 | `/youtubers` | Van welke YouTube-kanalen de bot momenten knipt |
 | `/youtuber_toevoegen naam` / `/youtuber_verwijderen naam` | YouTube-kanaal toevoegen of weghalen (naam uit de link, bijv. `MrBeast`) |
+| `/tiktok_clip link` | Van een bepaalde Twitch-clip of YouTube-video een TikTok-video maken (YouTube met `&t=90s` begint op die tijd) |
 | `/top` | De 10 grootste live streamers op dit moment |
 | `/streamers` | Van welke streamers de bot clips zoekt |
 | `/streamer_toevoegen naam` | Streamer toevoegen (Twitch-naam) |
@@ -141,6 +142,7 @@ Je mag er zoveel kiezen als je wilt, tot een week vooruit. Shorts voor vandaag e
 de rest onthoudt de bot en uploadt hij een dag van tevoren (YouTube staat maar ~6 uploads per dag toe).
 Staat je laptop op dat moment uit, dan schuift hij de short door naar de eerstvolgende vrije tijd.
 Met **❌ Afkeuren** gooi je een short weg; die wordt nooit gebruikt, ook niet als de bot zelf kiest.
+Met **📱 TikTok** krijg je de TikTok-versie van die short; hij blijft gewoon te kiezen voor YouTube.
 Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met de meeste views.
 `/kiesmodus aantal:0` zet hem weer op volledig automatisch.
 

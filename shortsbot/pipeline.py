@@ -3,6 +3,7 @@ import hashlib
 import logging
 import math
 import random
+import re
 import statistics
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -326,6 +327,41 @@ def clip_video(url: str, count: int, vyro: bool = False, hashtags: str = "") -> 
     moments = [(s, h) for s, h in ytclips.moments(info, count + 10) if not moment_used(info["id"], s)][:count]
     clips = [ytclips.make_clip(info, s, h, "vyro" if vyro else "youtube", tags) for s, h in moments]
     return clips, info.get("title") or url
+
+
+TWITCH_CLIP = re.compile(r"(?:clips\.twitch\.tv/|twitch\.tv/[\w-]+/clip/)([\w-]+)")
+
+
+def _start_time(url: str) -> float | None:
+    """'...&t=90s', '?t=1m30s' or '&t=90' -> 90.0"""
+    match = re.search(r"[?&]t=(?:(\d+)h)?(?:(\d+)m)?(\d+)?s?(?:&|$)", url)
+    if not match or not any(match.groups()):
+        return None
+    hours, minutes, seconds = (int(g or 0) for g in match.groups())
+    return float(hours * 3600 + minutes * 60 + seconds)
+
+
+def clip_from_link(url: str) -> Clip:
+    """A Twitch clip link, or a YouTube link (from its &t= time, or else its most re-watched moment)."""
+    url = url.strip()
+    match = TWITCH_CLIP.search(url)
+    if match:
+        clip = twitch.clip_by_id(match.group(1))
+        if clip is None:
+            raise ValueError("Deze Twitch-clip bestaat niet (meer).")
+        clip.title = youtube.better_title(clip)
+    elif "youtu" in url:
+        info = ytclips.video_info(url)
+        start = _start_time(url)
+        if start is None:
+            best = ytclips.moments(info, 1)
+            start = best[0][0] if best else 0.0
+        clip = ytclips.make_clip(info, start, 1.0)
+    else:
+        raise ValueError("Plak een link van een Twitch-clip of een YouTube-video.")
+    if db.is_known(clip.id):
+        clip.id += "-tt"  # already used for YouTube: keep that record as it is
+    return clip
 
 
 def pick_mixed(count: int) -> list[Clip]:
