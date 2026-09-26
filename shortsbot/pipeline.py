@@ -242,10 +242,12 @@ def pick_clip() -> Clip | None:
     if not candidates:
         return None
     recent = [row["broadcaster"] for row in db.recent_uploads(2)]
-    for clip in candidates:
+    favourites = set(favourite_streamers())
+    group = [c for c in candidates if c.broadcaster_login in favourites] or candidates
+    for clip in group:
         if clip.broadcaster_login not in recent:
             return clip
-    return candidates[0]
+    return group[0]  # a favourite twice in a row beats a random live streamer
 
 
 def open_slots(now: datetime | None = None, hours: int = 24) -> list[datetime]:
@@ -303,6 +305,11 @@ def tiktok_enabled() -> bool:
     return tiktok.enabled() and db.get_setting("tiktok_paused") != "1"
 
 
+def tiktok_needs_audit(exc: Exception) -> bool:
+    """TikTok lets an app that is not approved yet only post to private accounts."""
+    return "can_only_post_to_private_accounts" in str(exc)
+
+
 def post_tiktok(row) -> tuple[str, bool]:
     """Post one queued Short to TikTok. Returns (publish_id, public)."""
     from . import tiktok
@@ -314,9 +321,10 @@ def post_tiktok(row) -> tuple[str, bool]:
         raise RuntimeError("videobestand niet meer gevonden")
     try:
         publish_id, public = tiktok.upload(video, clip, youtube.make_hashtags(clip))
-    except Exception:
+    except Exception as exc:
         db.set_tiktok(clip.id, "failed")
-        video.unlink(missing_ok=True)
+        if not tiktok_needs_audit(exc):  # the bot sends the video to post by hand instead
+            video.unlink(missing_ok=True)
         raise
     db.set_tiktok(clip.id, "posted" if public else "private", publish_id)
     video.unlink(missing_ok=True)

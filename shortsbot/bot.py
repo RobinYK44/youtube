@@ -182,6 +182,9 @@ class ShortsBot(discord.Client):
             try:
                 _, public = await asyncio.to_thread(pipeline.post_tiktok, row)
             except Exception as exc:
+                if pipeline.tiktok_needs_audit(exc):
+                    await self.send_tiktok_by_hand(row)
+                    return
                 log.exception("TikTok mislukt")
                 await self.say(f"⚠️ TikTok-upload van **{row['title']}** mislukt: {_error_text(exc)}")
                 return
@@ -191,6 +194,19 @@ class ShortsBot(discord.Client):
             await self.say(
                 f"🎵 Op TikTok gezet: **{row['title']}** (🔒 alleen zichtbaar voor jou tot TikTok je app goedkeurt)"
             )
+
+    async def send_tiktok_by_hand(self, row):
+        """The TikTok app is not approved yet and the account is public: send the video to post by hand."""
+        clip = pipeline.clip_from_row(row)
+        video = pipeline.video_path(clip.id)
+        copy = await asyncio.to_thread(pipeline.tiktok_version, video) if video.exists() else None
+        video.unlink(missing_ok=True)
+        await self.say(
+            "ℹ️ TikTok laat de bot pas zelf posten als je app is goedgekeurd (of als je TikTok-account op privé "
+            "staat). Tot die tijd krijg je de video hier om zelf te posten."
+        )
+        if copy:
+            await self.send_tiktok_copy(clip, copy, None)
 
     @scheduler.before_loop
     async def _wait_ready(self):
