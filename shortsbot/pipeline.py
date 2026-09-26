@@ -1,6 +1,7 @@
 """Glue: pick streamers -> find the best unused clip -> render -> upload."""
 import hashlib
 import logging
+import math
 import random
 import statistics
 from datetime import datetime, timedelta, timezone
@@ -89,8 +90,8 @@ def viral_score(clip: Clip, streamer_median: float, now: datetime | None = None)
     title = clip.title.lower()
     if youtube.moods(clip.title) or any(word in title for word in HOT_WORDS):
         score *= 1.5
-    # Short Shorts do best: 15-35 s is ideal, long clips get cut and may lose context.
-    if 15 <= clip.duration <= 35:
+    # Short Shorts do best: 12-30 s is ideal, long clips get cut and may lose context.
+    if 12 <= clip.duration <= 30:
         score *= 1.2
     elif clip.duration < 12:
         score *= 0.85
@@ -99,9 +100,56 @@ def viral_score(clip: Clip, streamer_median: float, now: datetime | None = None)
     return round(score, 1)
 
 
+# ---- learning from our own views ---------------------------------------------------------------------------
+
+STATS_DAYS = 30
+STATS_MIN_AGE = timedelta(hours=48)  # a Short needs a couple of days before its views say something
+STATS_MIN_SHORTS = 5  # too little to learn from below this
+STATS_SHRINK = 3  # a streamer with only 1 or 2 Shorts stays close to average
+
+
+def update_view_stats() -> int:
+    """Read the current views of our Shorts from YouTube. Returns how many were updated."""
+    rows = db.uploads_since_publish((datetime.now(timezone.utc) - timedelta(days=STATS_DAYS)).isoformat())
+    if not rows:
+        return 0
+    views = youtube.video_views([row["youtube_id"] for row in rows])
+    for row in rows:
+        if row["youtube_id"] in views:
+            db.set_views(row["id"], views[row["youtube_id"]])
+    return len(views)
+
+
+def _published(row) -> datetime:
+    return datetime.fromisoformat(row["publish_at"] or row["updated_at"])
+
+
+def measured_shorts() -> list:
+    now = datetime.now(timezone.utc)
+    rows = db.uploads_since_publish((now - timedelta(days=STATS_DAYS)).isoformat())
+    return [r for r in rows if r["yt_views"] != "" and now - _published(r) >= STATS_MIN_AGE]
+
+
+def performance() -> dict[str, float]:
+    """Per streamer/channel: how much better (>1) or worse (<1) their Shorts do on our channel than average.
+    Uses the log of the views, so one lucky viral Short does not decide everything."""
+    rows = measured_shorts()
+    if len(rows) < STATS_MIN_SHORTS:
+        return {}
+    logs: dict[str, list[float]] = {}
+    for row in rows:
+        logs.setdefault(row["broadcaster"], []).append(math.log1p(int(row["yt_views"])))
+    overall = statistics.mean(v for values in logs.values() for v in values)
+    return {
+        login: round(min(2.5, max(0.5, math.exp((sum(values) + STATS_SHRINK * overall) / (len(values) + STATS_SHRINK) - overall))), 2)
+        for login, values in logs.items()
+    }
+
+
 def find_candidates(days: int | None = None) -> list[Clip]:
     logins = streamer_list()
     favourites = set(favourite_streamers())
+    learned = performance()
     users = twitch.user_ids(logins)
     candidates = []
     now = datetime.now(timezone.utc)
@@ -114,6 +162,7 @@ def find_candidates(days: int | None = None) -> list[Clip]:
         median = statistics.median([c.view_count for c in clips]) if clips else 1
         for clip in clips:
             clip.score = viral_score(clip, median, now)
+            clip.score = round(clip.score * learned.get(login, 1.0), 1)  # streamers that do well on our channel first
             if login in TOP_STREAMERS:
                 clip.score = round(clip.score * TOP_BOOST, 1)
             elif login not in favourites:
@@ -247,6 +296,7 @@ def moment_used(video_id: str, start: float) -> bool:
 def youtube_candidates(count: int, per_video: int = 2) -> list[Clip]:
     """The most re-watched unused moments from the newest videos and streams of the YouTube channels."""
     found = []
+    learned = performance()
     for channel in youtube_channels():
         for url in ytclips.latest_videos(channel):
             try:
@@ -257,7 +307,10 @@ def youtube_candidates(count: int, per_video: int = 2) -> list[Clip]:
             if ytclips.age_days(info) > config.clip_lookback_max_days:
                 continue
             moments = [(s, h) for s, h in ytclips.moments(info, 4) if not moment_used(info["id"], s)]
-            found += [ytclips.make_clip(info, s, h) for s, h in moments[:per_video]]
+            for start, heat in moments[:per_video]:
+                clip = ytclips.make_clip(info, start, heat)
+                clip.score = round(clip.score * learned.get(clip.broadcaster_login, 1.0), 1)
+                found.append(clip)
     found = list({c.id: c for c in found}.values())  # a stream can show up on both the videos and streams tab
     found.sort(key=lambda c: c.score, reverse=True)
     return found[:count]

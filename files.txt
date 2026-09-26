@@ -2,10 +2,12 @@ main.py
 requirements.txt
 start.bat
 tiktok_login.bat
+youtube_login.bat
 naar_server.bat
 files.txt
 shortsbot/__init__.py
 shortsbot/bot.py
+shortsbot/captions.py
 shortsbot/config.py
 shortsbot/db.py
 shortsbot/editor.py

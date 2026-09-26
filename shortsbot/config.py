@@ -19,9 +19,10 @@ def _int(name: str, default: int) -> int:
     return int(value) if value else default
 
 
-def _min_clip_views() -> int:
-    value = _int("MIN_CLIP_VIEWS", 3000)
-    return 3000 if value == 500 else value  # 500 was the old default copied into .env files: too many weak clips
+def _upgraded(name: str, old_default: int, new_default: int) -> int:
+    """Old defaults got copied into people's .env files; treat those as 'not set' so better defaults apply."""
+    value = _int(name, new_default)
+    return new_default if value == old_default else value
 
 
 def _list(name: str, default: str = "") -> list[str]:
@@ -61,16 +62,20 @@ class Config:
     candidates_per_day: int = _int("CANDIDATES_PER_DAY", 0)
 
     clip_lookback_days: int = _int("CLIP_LOOKBACK_DAYS", 2)
-    min_clip_views: int = _min_clip_views()
+    min_clip_views: int = _upgraded("MIN_CLIP_VIEWS", 500, 3000)  # 500 let through too many weak clips
     # When the favourite streamers have too few new clips, look this far back (popular older clips still do well).
     clip_lookback_max_days: int = _int("CLIP_LOOKBACK_MAX_DAYS", 14)
     # YouTube channels to clip from (their newest videos and streams). Can be changed with /youtuber_toevoegen.
     youtube_channels: list[str] = field(default_factory=lambda: _list("YOUTUBE_CHANNELS", "ishowspeed,mrbeast"))
+    # Big word-by-word captions (needs faster-whisper, installed by update.bat). base.en is fast, small.en more precise.
+    captions: bool = os.getenv("CAPTIONS", "1").strip().lower() not in ("0", "false", "nee", "uit")
+    caption_model: str = os.getenv("CAPTION_MODEL", "").strip() or "base.en"
     clip_zoom: float = float(os.getenv("CLIP_ZOOM", "").strip() or 1.0)  # >1 crops the sides, and the facecam with them
     min_clip_seconds: int = _int("MIN_CLIP_SECONDS", 10)
     max_short_seconds: int = _int("MAX_SHORT_SECONDS", 60)
     # Longer clips are cut to about this length. The end is kept: clips are made right after the moment.
-    target_short_seconds: int = _int("TARGET_SHORT_SECONDS", 35)
+    # 15-25 s Shorts get watched to the end and replayed more often than 35 s ones.
+    target_short_seconds: int = _upgraded("TARGET_SHORT_SECONDS", 35, 25)
     # Kiesmodus: compilations (3 funny moments in one Short) added to every daily batch.
     compilations_per_day: int = _int("COMPILATIONS_PER_DAY", 1)
     compilation_part_seconds: int = _int("COMPILATION_PART_SECONDS", 18)

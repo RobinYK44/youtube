@@ -122,6 +122,7 @@ TikTok-app (melding/inbox) en de tekst naar Discord; jij drukt in TikTok op post
 | `/compilatie aantal` | Short met 3 grappige momenten van verschillende streamers (#3, #2, #1) om uit te kiezen |
 | `/meer aantal` | Kiesmodus: nu meteen extra shorts zoeken om uit te kiezen (standaard 10) |
 | `/knip link aantal vyro hashtags` | De beste momenten uit een YouTube-video knippen, om uit te kiezen. Met `vyro:True` in Vyro-stijl (alleen de hashtags van de campagne, geen eigen logo's) |
+| `/statistieken` | De best lopende shorts, en van welke streamers de bot meer of minder kiest |
 | `/youtubers` | Van welke YouTube-kanalen de bot momenten knipt |
 | `/youtuber_toevoegen naam` / `/youtuber_verwijderen naam` | YouTube-kanaal toevoegen of weghalen (naam uit de link, bijv. `MrBeast`) |
 | `/top` | De 10 grootste live streamers op dit moment |
@@ -142,6 +143,15 @@ Staat je laptop op dat moment uit, dan schuift hij de short door naar de eerstvo
 Met **❌ Afkeuren** gooi je een short weg; die wordt nooit gebruikt, ook niet als de bot zelf kiest.
 Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met de meeste views.
 `/kiesmodus aantal:0` zet hem weer op volledig automatisch.
+
+### Ondertitels en leren van je views
+- **Ondertitels:** de bot schrijft uit wat er gezegd wordt en zet het groot in beeld, 3 woorden tegelijk (om en om wit en
+  geel). Dat gebeurt gratis op je eigen pc met spraakherkenning (faster-whisper). De eerste keer downloadt hij een model
+  van ~150 MB. Scheldwoorden worden in beeld gemaskeerd (f***), want die kunnen advertenties op YouTube beperken.
+  Uitzetten: `CAPTIONS=0` in `.env`.
+- **Leren van je views:** twee keer per dag leest de bot hoeveel views je shorts hebben. Streamers waarvan de shorts het
+  goed doen op jouw kanaal kiest hij vaker, streamers die slecht lopen minder vaak. Hiervoor moet je één keer opnieuw
+  inloggen bij YouTube: dubbelklik op `youtube_login`. Met `/statistieken` zie je wat hij geleerd heeft.
 
 ### YouTube-momenten en Vyro
 Naast Twitch-clips knipt de bot ook momenten uit de nieuwste video's en streams van YouTube-kanalen (standaard
@@ -172,7 +182,9 @@ indient. Lees altijd de regels van de campagne: die verschillen per maker.
 | `MIN_CLIP_VIEWS` | 3000 | Alleen clips met minstens zoveel views |
 | `MIN_CLIP_SECONDS` | 10 | Alleen clips van minstens zoveel seconden |
 | `MAX_SHORT_SECONDS` | 60 | Maximale lengte van de short |
+| `CAPTIONS` | 1 | Grote ondertitels in beeld (0 = uit) |
+| `CAPTION_MODEL` | base.en | Spraakherkenning: `base.en` is snel, `small.en` nauwkeuriger maar trager |
 | `CLIP_ZOOM` | 1 | Inzoomen (1 = hele beeld; hoger = groter beeld, maar de zijkanten met vaak de webcam van de streamer vallen weg) |
-| `TARGET_SHORT_SECONDS` | 35 | Langere clips worden ingekort tot ongeveer zoveel seconden (het einde blijft) |
+| `TARGET_SHORT_SECONDS` | 25 | Langere clips worden ingekort tot ongeveer zoveel seconden (het einde blijft) |
 | `COMPILATIONS_PER_DAY` | 1 | Kiesmodus: zoveel compilaties (3 grappige momenten in één short) per dag erbij |
 | `COMPILATION_PART_SECONDS` | 18 | Maximale lengte van elk moment in een compilatie |

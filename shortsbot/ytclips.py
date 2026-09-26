@@ -13,8 +13,8 @@ from yt_dlp.utils import download_range_func
 from .twitch import Clip
 
 log = logging.getLogger("shortsbot")
-MOMENT_SECONDS = 30
-BEFORE_PEAK = 10  # start a bit before the most re-watched point, so viewers get the build-up
+MOMENT_SECONDS = 25
+BEFORE_PEAK = 8  # start a bit before the most re-watched point, so viewers get the build-up
 SKIP_START = 0.05  # everybody watches the first seconds, so the start of the graph says nothing
 HEAT_SCORE = 4000  # scale a moment's heat (0-1) to the same range as a good Twitch clip's viral score
 

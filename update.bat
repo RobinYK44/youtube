@@ -11,6 +11,8 @@ echo Onderdelen bijwerken...
 python -m pip install -q -r requirements.txt
 rem YouTube verandert vaak iets: altijd de nieuwste yt-dlp.
 python -m pip install -q -U yt-dlp
+rem Spraakherkenning voor de ondertitels. Lukt dit niet, dan maakt de bot shorts zonder ondertitels.
+python -m pip install -q faster-whisper || echo Ondertitels installeren lukte niet, de bot werkt verder zonder.
 curl -fsSL -o update.new "%BASE%/update.bat"
 echo.
 echo Klaar! Dubbelklik nu op start.bat om de bot te starten.

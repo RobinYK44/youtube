@@ -20,7 +20,12 @@ from googleapiclient.http import MediaFileUpload
 
 from .config import DATA_DIR, config
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+READ_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"  # to read the views of our own Shorts
+SCOPES = ["https://www.googleapis.com/auth/youtube.upload", READ_SCOPE]
+
+
+class NeedsLogin(RuntimeError):
+    """The saved login is older than the view statistics: log in again once to allow reading views."""
 
 # Hashtags are guessed from the clip title, the streamer and the game: the bot cannot watch the video,
 # so the mood (funny, scary, ...) comes from words in the title. General tags fill up the rest.
@@ -181,11 +186,26 @@ def authorize() -> None:
 def _credentials() -> Credentials:
     if not config.youtube_token_file.exists():
         raise RuntimeError("Geen YouTube-login gevonden. Draai eerst: python -m shortsbot.youtube auth")
-    creds = Credentials.from_authorized_user_file(str(config.youtube_token_file), SCOPES)
+    # Keep the scopes the login was made with: asking for more on refresh would break older logins.
+    creds = Credentials.from_authorized_user_file(str(config.youtube_token_file))
     if not creds.valid and creds.refresh_token:
         creds.refresh(Request())
         config.youtube_token_file.write_text(creds.to_json(), encoding="utf-8")
     return creds
+
+
+def video_views(video_ids: list[str]) -> dict[str, int]:
+    """Current view count of our own videos (1 quota unit per 50 videos)."""
+    creds = _credentials()
+    if not creds.has_scopes([READ_SCOPE]):
+        raise NeedsLogin("Log opnieuw in bij YouTube (dubbelklik op youtube_login) zodat ik je views kan lezen.")
+    youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
+    views = {}
+    for i in range(0, len(video_ids), 50):
+        response = youtube.videos().list(part="statistics", id=",".join(video_ids[i : i + 50])).execute()
+        for item in response.get("items", []):
+            views[item["id"]] = int(item.get("statistics", {}).get("viewCount", 0))
+    return views
 
 
 def build_metadata(clip) -> dict:

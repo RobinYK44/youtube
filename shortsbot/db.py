@@ -23,6 +23,7 @@ _conn.executescript(
 _columns = [row["name"] for row in _conn.execute("PRAGMA table_info(clips)")]
 for _name in (
     "publish_at", "url", "broadcaster_name", "game", "score", "parts", "tiktok_status", "tiktok_id", "source", "tags",
+    "yt_views",
 ):  # added after the first release
     if _name not in _columns:
         _conn.execute(f"ALTER TABLE clips ADD COLUMN {_name} TEXT DEFAULT ''")
@@ -135,6 +136,20 @@ def tiktok_due(moment: str) -> list[sqlite3.Row]:
 
 def tiktok_queue_size() -> int:
     return _conn.execute("SELECT COUNT(*) FROM clips WHERE tiktok_status = 'queued'").fetchone()[0]
+
+
+def uploads_since_publish(moment: str) -> list[sqlite3.Row]:
+    """Uploaded Shorts that went (or go) online after `moment`, for the view statistics."""
+    return _conn.execute(
+        "SELECT * FROM clips WHERE status = 'uploaded' AND youtube_id != ''"
+        " AND COALESCE(NULLIF(publish_at, ''), updated_at) > ?",
+        (moment,),
+    ).fetchall()
+
+
+def set_views(clip_id: str, views: int) -> None:
+    _conn.execute("UPDATE clips SET yt_views = ? WHERE id = ?", (str(views), clip_id))
+    _conn.commit()
 
 
 def recent_uploads(limit: int = 5) -> list[sqlite3.Row]:

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yt_dlp
 
+from . import captions
 from .config import config
 
 FONT_CANDIDATES = [
@@ -134,6 +135,7 @@ def render_short(
                 f":fontsize={size}:fontcolor=white:borderw=5:bordercolor=black"
                 f":x=(w-text_w)/2:y={y}"
             )
+        overlays += captions.filters(source, start, length, work_dir, font, y=1290)  # just below the clip
         if end_card:
             overlays += _end_card(font, work_dir, length)
 

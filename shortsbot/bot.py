@@ -10,7 +10,7 @@ from discord.ext import tasks
 
 from . import db, pipeline
 from .config import config
-from .youtube import make_hashtags, tiktok_caption
+from .youtube import NeedsLogin, make_hashtags, tiktok_caption
 from .twitch import Clip
 
 log = logging.getLogger("shortsbot")
@@ -21,6 +21,7 @@ CANDIDATE_MAX_AGE = timedelta(hours=48)
 TIKTOK_GAP = timedelta(minutes=45)  # never post to TikTok more often than this, also after catching up
 PICK_AHEAD_HOURS = 7 * 24  # kiesmodus: picked Shorts may fill publish times up to a week ahead
 UPLOAD_AHEAD = timedelta(hours=24)  # picked Shorts are uploaded to YouTube this long before their publish time
+STATS_EVERY = timedelta(hours=12)
 MAX_UPLOADS_PER_DAY = 6  # YouTube API quota: 10,000 units a day, an upload costs 1,600
 
 
@@ -140,6 +141,22 @@ class ShortsBot(discord.Client):
 
     # ---- schedule -------------------------------------------------------------------------------------
 
+    async def update_stats_if_due(self):
+        """Twice a day: read the views of our Shorts, so the bot learns which streamers do well."""
+        last = db.get_setting("stats_at")
+        now = datetime.now(timezone.utc)
+        if last and now - datetime.fromisoformat(last) < STATS_EVERY:
+            return
+        db.set_setting("stats_at", now.isoformat())
+        try:
+            await asyncio.to_thread(pipeline.update_view_stats)
+        except NeedsLogin as exc:
+            if db.get_setting("stats_login_warned") != "1":
+                db.set_setting("stats_login_warned", "1")
+                await self.say(f"📊 {exc} Daarna leert de bot van welke streamers jouw shorts het best lopen.")
+        except Exception:
+            log.exception("Views ophalen mislukt")
+
     def upload_limit_reached(self) -> bool:
         since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         return db.uploads_since(since) >= MAX_UPLOADS_PER_DAY
@@ -190,6 +207,7 @@ class ShortsBot(discord.Client):
             return
         await self.post_tiktok_due()
         await self.upload_queued()
+        await self.update_stats_if_due()
         if now < self.retry_at:
             return
         if pipeline.candidates_per_day():
@@ -693,6 +711,40 @@ def register_commands(bot: ShortsBot):
             return
         await interaction.response.send_message("✂️ Ik zoek de beste momenten, even geduld...")
         bot.start_batch(bot.clip_video(link, aantal, vyro, hashtags))
+
+    @tree.command(name="statistieken", description="Welke shorts en streamers het best lopen op je kanaal")
+    @admin
+    async def stats(interaction: discord.Interaction):
+        await interaction.response.defer()
+        try:
+            await asyncio.to_thread(pipeline.update_view_stats)
+        except NeedsLogin as exc:
+            await interaction.followup.send(f"📊 {exc}")
+            return
+        except Exception as exc:
+            await interaction.followup.send(f"⚠️ Views ophalen mislukt: {_error_text(exc)}")
+            return
+        rows = sorted(pipeline.measured_shorts(), key=lambda r: int(r["yt_views"]), reverse=True)
+        if not rows:
+            await interaction.followup.send("📊 Nog geen shorts die al 2 dagen online staan. Kijk over een paar dagen weer.")
+            return
+        top = "\n".join(
+            f"{i}. **{int(r['yt_views']):,}** views — {r['title']} ({r['broadcaster']}) "
+            f"<https://youtube.com/shorts/{r['youtube_id']}>"
+            for i, r in enumerate(rows[:5], 1)
+        )
+        total = sum(int(r["yt_views"]) for r in rows)
+        learned = sorted(pipeline.performance().items(), key=lambda item: item[1], reverse=True)
+        if learned:
+            good = ", ".join(f"{name} ({factor}×)" for name, factor in learned[:3] if factor > 1)
+            bad = ", ".join(f"{name} ({factor}×)" for name, factor in learned[::-1][:3] if factor < 1)
+            lesson = f"\n\n🧠 **Doet het goed:** {good or '-'}\n🐢 **Minder:** {bad or '-'}\nDaar kies ik voortaan meer of minder van."
+        else:
+            lesson = f"\n\n🧠 Vanaf {pipeline.STATS_MIN_SHORTS} shorts die 2 dagen online staan, leer ik welke streamers het best lopen."
+        await interaction.followup.send(
+            f"📊 **{len(rows)} shorts, samen {total:,} views** (laatste {pipeline.STATS_DAYS} dagen)\n"
+            f"**Beste shorts:**\n{top}{lesson}"
+        )
 
     @tree.command(name="youtubers", description="Van welke YouTube-kanalen ik momenten knip")
     @admin
