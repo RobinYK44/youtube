@@ -294,20 +294,35 @@ def moment_used(video_id: str, start: float) -> bool:
     return False
 
 
+# What the last YouTube search saw, so the bot can explain in Discord why it found nothing.
+youtube_report: dict = {}
+
+
 def youtube_candidates(count: int, per_video: int = 2) -> list[Clip]:
     """The most re-watched unused moments from the newest videos and streams of the YouTube channels."""
     found = []
     learned = performance()
+    report = {"videos": 0, "too_old": 0, "no_heatmap": 0, "used": 0, "errors": []}
+    youtube_report.clear()
+    youtube_report.update(report)
     for channel in youtube_channels():
-        for url in ytclips.latest_videos(channel):
+        for url in ytclips.latest_videos(channel, errors=youtube_report["errors"]):
+            youtube_report["videos"] += 1
             try:
                 info = ytclips.video_info(url)
-            except Exception:
+            except Exception as exc:
                 log.exception("YouTube-video ophalen mislukt: %s", url)
+                youtube_report["errors"].append(f"{url}: {exc}")
                 continue
             if ytclips.age_days(info) > config.clip_lookback_max_days:
+                youtube_report["too_old"] += 1
                 continue
-            moments = [(s, h) for s, h in ytclips.moments(info, 4) if not moment_used(info["id"], s)]
+            all_moments = ytclips.moments(info, 4)
+            if not all_moments:
+                youtube_report["no_heatmap"] += 1
+            moments = [(s, h) for s, h in all_moments if not moment_used(info["id"], s)]
+            if all_moments and not moments:
+                youtube_report["used"] += 1
             for start, heat in moments[:per_video]:
                 clip = ytclips.make_clip(info, start, heat)
                 clip.score = round(clip.score * learned.get(clip.broadcaster_login, 1.0), 1)
@@ -315,6 +330,24 @@ def youtube_candidates(count: int, per_video: int = 2) -> list[Clip]:
     found = list({c.id: c for c in found}.values())  # a stream can show up on both the videos and streams tab
     found.sort(key=lambda c: c.score, reverse=True)
     return found[:count]
+
+
+def youtube_report_text() -> str:
+    """Why the last YouTube search found nothing, in plain Dutch."""
+    r = youtube_report
+    if not r:
+        return ""
+    parts = [f"{r.get('videos', 0)} video's bekeken"]
+    if r.get("too_old"):
+        parts.append(f"{r['too_old']} ouder dan {config.clip_lookback_max_days} dagen")
+    if r.get("no_heatmap"):
+        parts.append(f"{r['no_heatmap']} zonder 'meest herbekeken'-grafiek")
+    if r.get("used"):
+        parts.append(f"{r['used']} al helemaal gebruikt")
+    text = ", ".join(parts)
+    if r.get("errors"):
+        text += f". Fout: {r['errors'][0][:300]}"
+    return text
 
 
 def clip_video(url: str, count: int, vyro: bool = False, hashtags: str = "") -> tuple[list[Clip], str]:
@@ -368,8 +401,9 @@ def pick_mixed(count: int) -> list[Clip]:
     """Kiesmodus: half Twitch clips, half YouTube moments (fewer YouTube when there are not enough)."""
     try:
         youtube_clips = youtube_candidates(count // 2) if youtube_channels() else []
-    except Exception:
+    except Exception as exc:
         log.exception("YouTube-clips zoeken mislukt")
+        youtube_report["errors"] = [str(exc)]
         youtube_clips = []
     twitch_clips = pick_candidates(count - len(youtube_clips))
     mixed = []

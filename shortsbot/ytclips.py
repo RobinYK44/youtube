@@ -28,8 +28,21 @@ class _Silent:
     info = warning = error = debug
 
 
+def _js_runtimes() -> dict:
+    """YouTube needs a JavaScript runtime (Deno) to unlock its videos. pip installs deno.exe in a folder that is
+    not on PATH, so tell yt-dlp where it is."""
+    try:
+        from deno import find_deno_bin
+
+        return {"deno": {"path": find_deno_bin()}}
+    except Exception:
+        return {"deno": {}}  # yt-dlp's default: a deno on PATH, if any
+
+
 def _ydl(**opts) -> yt_dlp.YoutubeDL:
-    return yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "logger": _Silent(), **opts})
+    return yt_dlp.YoutubeDL(
+        {"quiet": True, "no_warnings": True, "logger": _Silent(), "js_runtimes": _js_runtimes(), **opts}
+    )
 
 
 def channel_url(channel: str) -> str:
@@ -40,15 +53,17 @@ def channel_url(channel: str) -> str:
     return "https://www.youtube.com/@" + channel.lstrip("@")
 
 
-def latest_videos(channel: str, per_tab: int = 4) -> list[str]:
+def latest_videos(channel: str, per_tab: int = 4, errors: list[str] | None = None) -> list[str]:
     """Links to the newest long videos and past live streams of a channel."""
     urls = []
     for tab in ("videos", "streams"):
         try:
             with _ydl(extract_flat="in_playlist", playlistend=per_tab) as ydl:
                 info = ydl.extract_info(f"{channel_url(channel)}/{tab}", download=False)
-        except Exception:
-            continue  # not every channel has a streams tab
+        except Exception as exc:
+            if "does not have a" not in str(exc) and errors is not None:  # no streams tab is normal
+                errors.append(f"{channel}: {exc}")
+            continue
         urls += [f"https://www.youtube.com/watch?v={e['id']}" for e in info.get("entries") or [] if e.get("id")]
     return urls
 

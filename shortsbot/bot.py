@@ -417,9 +417,13 @@ class ShortsBot(discord.Client):
     # ---- kiesmodus --------------------------------------------------------------------------------------
 
     async def make_batch_if_due(self):
+        """Once a day: make the day's candidates. If the bot was closed halfway, only the rest is made later."""
         last = db.get_setting("batch_at")
         now = datetime.now(timezone.utc)
         if last and now - datetime.fromisoformat(last) < BATCH_EVERY:
+            left = int(db.get_setting("batch_left") or 0)
+            if left > 0 and pipeline.open_slots(hours=PICK_AHEAD_HOURS):
+                await self.make_batch(left, "🎞️ Ik maak de laatste **{n} shorts** van vandaag af.", daily="resume")
             return
         open_slots = pipeline.open_slots(hours=PICK_AHEAD_HOURS)
         if not open_slots:
@@ -430,13 +434,13 @@ class ShortsBot(discord.Client):
             f"Ze komen online om {', '.join(pipeline.publish_times())}, in de volgorde waarin je ze kiest. "
             "Kies je niet op tijd, dan kies ik 45 minuten van tevoren zelf de beste."
         )
-        if await self.make_batch(pipeline.candidates_per_day(), header):
-            db.set_setting("batch_at", now.isoformat())
+        if await self.make_batch(pipeline.candidates_per_day(), header, daily="new"):
             if config.compilations_per_day:
                 await self.make_compilations(config.compilations_per_day)
 
-    async def make_batch(self, count: int, header: str) -> bool:
-        """Render `count` new candidates and post them. `header` may contain {n}. False when none were found."""
+    async def make_batch(self, count: int, header: str, daily: str = "") -> bool:
+        """Render `count` new candidates and post them. `header` may contain {n}. False when none were found.
+        daily='new' starts the day's batch, 'resume' finishes one that was cut off by closing the bot."""
         try:
             clips = await asyncio.to_thread(pipeline.pick_mixed, count)
         except Exception as exc:
@@ -447,13 +451,23 @@ class ShortsBot(discord.Client):
         if not clips:
             await self.say("🔍 Geen nieuwe clips gevonden die aan de eisen voldoen. Ik probeer het later opnieuw.")
             self.retry_at = datetime.now(timezone.utc) + RETRY_AFTER
+            if daily == "resume":
+                db.set_setting("batch_left", "0")  # nothing left to find today
             return False
+        if daily == "new":
+            db.set_setting("batch_at", datetime.now(timezone.utc).isoformat())
+        if daily:
+            db.set_setting("batch_left", str(len(clips)))  # remembered, in case the bot is closed halfway
 
         await self.say(header.format(n=len(clips)))
+        if pipeline.youtube_channels() and not any(c.source != "twitch" for c in clips):
+            await self.say(f"▶️ Geen YouTube-momenten gevonden deze keer ({pipeline.youtube_report_text()}).")
         for number, clip in enumerate(clips, 1):
             if db.get_setting("paused") == "1":
                 return True
             await self.make_candidate(clip, number, len(clips))
+            if daily:
+                db.set_setting("batch_left", str(len(clips) - number))
         await self.say(f"👍 Alle {len(clips)} shorts staan klaar. Kies je favorieten!")
         return True
 
