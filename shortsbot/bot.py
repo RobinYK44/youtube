@@ -19,7 +19,9 @@ BATCH_EVERY = timedelta(hours=20)  # kiesmodus: at most one new batch of candida
 AUTO_PICK_BEFORE = timedelta(minutes=45)  # kiesmodus: pick the best one yourself if the owner did not
 CANDIDATE_MAX_AGE = timedelta(hours=48)
 TIKTOK_GAP = timedelta(minutes=45)  # never post to TikTok more often than this, also after catching up
-PICK_AHEAD_HOURS = 48  # kiesmodus: picked Shorts may fill publish times up to two days ahead
+PICK_AHEAD_HOURS = 7 * 24  # kiesmodus: picked Shorts may fill publish times up to a week ahead
+UPLOAD_AHEAD = timedelta(hours=24)  # picked Shorts are uploaded to YouTube this long before their publish time
+MAX_UPLOADS_PER_DAY = 6  # YouTube API quota: 10,000 units a day, an upload costs 1,600
 
 
 def _local_time(moment: datetime) -> str:
@@ -101,6 +103,7 @@ class ShortsBot(discord.Client):
         self.channel: discord.abc.Messageable | None = None
         self.background: asyncio.Task | None = None
         self.retry_at = datetime.min.replace(tzinfo=timezone.utc)
+        self.queue_retry_at = datetime.min.replace(tzinfo=timezone.utc)
         self.batch_task: asyncio.Task | None = None
         register_commands(self)
 
@@ -137,6 +140,46 @@ class ShortsBot(discord.Client):
 
     # ---- schedule -------------------------------------------------------------------------------------
 
+    def upload_limit_reached(self) -> bool:
+        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        return db.uploads_since(since) >= MAX_UPLOADS_PER_DAY
+
+    async def upload_queued(self):
+        """Upload picked Shorts a day before their publish time, at most MAX_UPLOADS_PER_DAY a day."""
+        now = datetime.now(timezone.utc)
+        if now < self.queue_retry_at:
+            return
+        for row in db.queued_due((now + UPLOAD_AHEAD).isoformat()):
+            if self.upload_limit_reached():
+                return
+            async with self.upload_lock:
+                row = db.get(row["id"])
+                if row is None or row["status"] != "queued":
+                    continue
+                clip = pipeline.clip_from_row(row)
+                video = pipeline.video_path(clip.id)
+                if not video.exists():
+                    db.mark(clip, "failed")
+                    await self.say(f"⚠️ Het videobestand van **{clip.title}** is weg. Die tijd is weer vrij.")
+                    continue
+                slot = datetime.fromisoformat(row["publish_at"])
+                if slot < now + timedelta(minutes=15):  # the PC was off at its time: move it to the next free time
+                    db.mark(clip, "candidate")  # frees its old time while looking for a new one
+                    free = pipeline.open_slots(hours=PICK_AHEAD_HOURS)
+                    if not free:
+                        await self.say(f"⚠️ Geen vrije tijd meer voor **{clip.title}**. Hij staat weer bij de keuzes.")
+                        continue
+                    db.mark(clip, "queued", publish_at=free[0].isoformat())
+                    await self.say(f"⏰ **{clip.title}** is verschoven naar {_local_time(free[0])} (je laptop stond uit).")
+                    continue
+                ok, text = await self._publish(clip, video, slot)
+                if not ok:
+                    db.mark(clip, "queued", publish_at=row["publish_at"])  # keep it, try again later
+                    self.queue_retry_at = now + RETRY_AFTER
+                    await self.say(f"{text}\nIk probeer **{clip.title}** later opnieuw.")
+                    return
+            await self.say(text)
+
     @tasks.loop(minutes=5)
     async def scheduler(self):
         """Fill every publish time in the coming 24 hours, so Shorts go online even when the PC is off."""
@@ -146,6 +189,7 @@ class ShortsBot(discord.Client):
         if db.get_setting("paused") == "1":
             return
         await self.post_tiktok_due()
+        await self.upload_queued()
         if now < self.retry_at:
             return
         if pipeline.candidates_per_day():
@@ -318,7 +362,7 @@ class ShortsBot(discord.Client):
             return
         header = (
             "🎞️ Ik maak **{n} shorts**. "
-            f"Kies er maximaal **{len(open_slots)}** uit met **✅ Kies deze**. "
+            f"Kies er zoveel als je wilt met **✅ Kies deze** (nog **{len(open_slots)}** plekken in de komende 7 dagen). "
             f"Ze komen online om {', '.join(pipeline.publish_times())}, in de volgorde waarin je ze kiest. "
             "Kies je niet op tijd, dan kies ik 45 minuten van tevoren zelf de beste."
         )
@@ -443,13 +487,22 @@ class ShortsBot(discord.Client):
                 return False, "Deze short is al gekozen of verlopen."
             slots = pipeline.open_slots(hours=PICK_AHEAD_HOURS)
             if not slots:
-                return False, "Alle tijden voor de komende 2 dagen zijn al gevuld. Morgen kun je weer kiezen."
+                return False, "Alle tijden voor de komende 7 dagen zijn al gevuld. Morgen kun je weer kiezen."
             clip = pipeline.clip_from_row(row)
             video = pipeline.video_path(clip_id)
             if not video.exists():
                 db.mark(clip, "expired")
                 return False, "Het videobestand van deze short bestaat niet meer. Kies een andere."
-            ok, text = await self._publish(clip, video, slots[0])
+            slot = slots[0]
+            if slot - datetime.now(timezone.utc) > UPLOAD_AHEAD or self.upload_limit_reached():
+                # Uploading everything now would hit YouTube's daily limit: upload it the day before instead.
+                db.mark(clip, "queued", publish_at=slot.isoformat())
+                ok, text = True, (
+                    f"🗓️ Gekozen voor {_local_time(slot)}. Ik zet hem een dag van tevoren op YouTube "
+                    "(zorg dat je laptop dan even aan staat)."
+                )
+            else:
+                ok, text = await self._publish(clip, video, slot)
             if ok and not auto:
                 left = len(slots) - 1
                 text += f"\nNog {left} te kiezen." if left else "\nAlle tijden zijn gevuld! 🎉"
@@ -482,7 +535,7 @@ def register_commands(bot: ShortsBot):
         now = datetime.now(timezone.utc)
         planned = "\n".join(
             f"• {_local_time(datetime.fromisoformat(r['publish_at']))} — {r['broadcaster']}: "
-            f"https://youtube.com/shorts/{r['youtube_id']}"
+            + (f"https://youtube.com/shorts/{r['youtube_id']}" if r["youtube_id"] else "gekozen, nog niet geüpload")
             for r in db.scheduled_after(now.isoformat())
         )
         recent = "\n".join(
@@ -526,7 +579,7 @@ def register_commands(bot: ShortsBot):
             return
         if not pipeline.open_slots(hours=PICK_AHEAD_HOURS):
             await interaction.response.send_message(
-                "Alle tijden voor de komende 2 dagen zijn al gevuld, dus er valt nu niks te kiezen."
+                "Alle tijden voor de komende 7 dagen zijn al gevuld, dus er valt nu niks te kiezen."
             )
             return
         await interaction.response.send_message(f"🔍 Ik zoek {aantal} nieuwe shorts, even geduld...")
@@ -557,12 +610,13 @@ def register_commands(bot: ShortsBot):
         links = "\n".join(
             f"• {_local_time(datetime.fromisoformat(r['publish_at']))} — https://studio.youtube.com/video/{r['youtube_id']}/edit"
             for r in rows
+            if r["youtube_id"]
         )
         bot.retry_at = datetime.min.replace(tzinfo=timezone.utc)
-        await interaction.response.send_message(
-            f"🗑️ {len(rows)} tijden zijn weer vrij. **Verwijder deze video's zelf in YouTube Studio**, "
-            f"anders komen ze alsnog online:\n{links}"
-        )
+        text = f"🗑️ {len(rows)} tijden zijn weer vrij."
+        if links:
+            text += f" **Verwijder deze video's zelf in YouTube Studio**, anders komen ze alsnog online:\n{links}"
+        await interaction.response.send_message(text)
 
     @tree.command(name="tijden", description="Kies op welke tijden de shorts online komen")
     @app_commands.describe(tijden="Nederlandse tijden, bijv. 18:00, 21:00, 00:00, 02:00 (max 6)")

@@ -13,7 +13,7 @@ _conn.executescript(
         broadcaster TEXT,
         title TEXT,
         views INTEGER,
-        status TEXT,          -- candidate / uploaded / tiktok / rejected / failed / expired
+        status TEXT,          -- candidate / queued / uploaded / tiktok / rejected / failed / expired
         youtube_id TEXT,
         updated_at TEXT
     );
@@ -81,14 +81,31 @@ def expire_candidates(before: str) -> list[str]:
 
 
 def taken_slots() -> set[str]:
-    rows = _conn.execute("SELECT publish_at FROM clips WHERE status = 'uploaded' AND publish_at != ''").fetchall()
+    rows = _conn.execute(
+        "SELECT publish_at FROM clips WHERE status IN ('uploaded', 'queued') AND publish_at != ''"
+    ).fetchall()
     return {row["publish_at"] for row in rows}
 
 
 def scheduled_after(moment: str) -> list[sqlite3.Row]:
+    """Uploaded Shorts that are not online yet, and picked Shorts waiting to be uploaded ('queued')."""
     return _conn.execute(
-        "SELECT * FROM clips WHERE status = 'uploaded' AND publish_at > ? ORDER BY publish_at", (moment,)
+        "SELECT * FROM clips WHERE status IN ('uploaded', 'queued') AND publish_at > ? ORDER BY publish_at",
+        (moment,),
     ).fetchall()
+
+
+def queued_due(before: str) -> list[sqlite3.Row]:
+    """Picked Shorts whose publish time is before `before`: time to upload them to YouTube."""
+    return _conn.execute(
+        "SELECT * FROM clips WHERE status = 'queued' AND publish_at <= ? ORDER BY publish_at", (before,)
+    ).fetchall()
+
+
+def uploads_since(moment: str) -> int:
+    return _conn.execute(
+        "SELECT COUNT(*) FROM clips WHERE status = 'uploaded' AND youtube_id != '' AND updated_at > ?", (moment,)
+    ).fetchone()[0]
 
 
 def cancel_scheduled_after(moment: str) -> list[sqlite3.Row]:
