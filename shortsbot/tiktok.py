@@ -109,7 +109,7 @@ def _access_token() -> str:
         try:
             token = _token_request({"grant_type": "refresh_token", "refresh_token": token["refresh_token"]})
         except TikTokError as exc:
-            raise TikTokError(f"TikTok-login is verlopen. Draai `python -m shortsbot.tiktok auth`. ({exc})")
+            raise TikTokError(f"TikTok-login is verlopen. Dubbelklik op `tiktok_login` op je pc. ({exc})")
         _save(token)
     return token["access_token"]
 

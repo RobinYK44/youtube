@@ -98,7 +98,7 @@ Tot TikTok je app goedkeurt, zijn de TikTok-posts alleen voor jou zichtbaar.
 5. Redirect URI (bij Login Kit, Desktop): `http://localhost:8765/callback/`
 6. Maak een **Sandbox** aan, voeg je eigen TikTok-account toe als *Target user*, en kopieer de sandbox
    **Client key** en **Client secret** naar `.env` (`TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`).
-7. Log één keer in: `python -m shortsbot.tiktok auth`
+7. Log één keer in: dubbelklik op `tiktok_login` (of `python -m shortsbot.tiktok auth`)
 8. Start de bot opnieuw. Vanaf nu gaat elke short ook naar TikTok. Uitzetten kan met `/tiktok aan:False`.
 9. Wil je dat de posts openbaar worden? Dien de app in voor review (**Submit for review**) en vraag de audit aan.
 

@@ -174,8 +174,10 @@ class ShortsBot(discord.Client):
         due = db.tiktok_due(now.isoformat())
         if not due:
             return
-        row = due[0]
-        db.set_setting("tiktok_last", now.isoformat())
+        await self.post_tiktok_row(due[0])
+
+    async def post_tiktok_row(self, row):
+        db.set_setting("tiktok_last", datetime.now(timezone.utc).isoformat())
         async with self.upload_lock:
             try:
                 _, public = await asyncio.to_thread(pipeline.post_tiktok, row)
@@ -230,6 +232,11 @@ class ShortsBot(discord.Client):
         return ok
 
     async def send_tiktok_only(self, clip: Clip, video) -> bool:
+        if pipeline.tiktok_enabled():  # automatic TikTok: post it right away
+            db.mark(clip, "tiktok")  # used, so it will not show up again for YouTube
+            db.set_tiktok(clip.id, "queued")
+            await self.post_tiktok_row(db.get(clip.id))
+            return db.get(clip.id)["tiktok_status"] != "failed"
         copy = await asyncio.to_thread(pipeline.tiktok_version, video)
         video.unlink(missing_ok=True)
         if copy is None:

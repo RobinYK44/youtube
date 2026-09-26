@@ -1,6 +1,7 @@
 main.py
 requirements.txt
 start.bat
+tiktok_login.bat
 files.txt
 shortsbot/__init__.py
 shortsbot/bot.py
