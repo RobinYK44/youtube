@@ -47,6 +47,12 @@ def _mode_text() -> str:
     return f"kiesmodus ({count} per dag, jij kiest)" if count else "volledig automatisch"
 
 
+def _tiktok_only(clip_id: str) -> discord.ui.View:
+    view = discord.ui.View(timeout=None)
+    view.add_item(TikTokButton(clip_id))
+    return view
+
+
 class PickButton(discord.ui.DynamicItem[discord.ui.Button], template=r"pick:(?P<clip_id>.+)"):
     """'Kies deze' button under a candidate. Keeps working after the bot restarts."""
 
@@ -65,8 +71,10 @@ class PickButton(discord.ui.DynamicItem[discord.ui.Button], template=r"pick:(?P<
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         ok, text = await interaction.client.pick(self.clip_id)
-        if ok:
-            await interaction.edit_original_response(content=f"{interaction.message.content}\n{text}", view=None)
+        if ok:  # keep only the TikTok button, so a TikTok version can still be asked for afterwards
+            await interaction.edit_original_response(
+                content=f"{interaction.message.content}\n{text}", view=_tiktok_only(self.clip_id)
+            )
         else:
             await interaction.followup.send(text, ephemeral=True)
 
@@ -89,8 +97,10 @@ class RejectButton(discord.ui.DynamicItem[discord.ui.Button], template=r"reject:
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         ok, text = await interaction.client.reject(self.clip_id)
-        if ok:
-            await interaction.edit_original_response(content=f"{interaction.message.content}\n{text}", view=None)
+        if ok:  # keep only the TikTok button, so a TikTok version can still be asked for afterwards
+            await interaction.edit_original_response(
+                content=f"{interaction.message.content}\n{text}", view=_tiktok_only(self.clip_id)
+            )
         else:
             await interaction.followup.send(text, ephemeral=True)
 
@@ -222,8 +232,8 @@ class ShortsBot(discord.Client):
     async def scheduler(self):
         """Fill every publish time in the coming 24 hours, so Shorts go online even when the PC is off."""
         now = datetime.now(timezone.utc)
-        for clip_id in db.expire_candidates((now - CANDIDATE_MAX_AGE).isoformat()):
-            pipeline.video_path(clip_id).unlink(missing_ok=True)
+        db.expire_candidates((now - CANDIDATE_MAX_AGE).isoformat())
+        pipeline.cleanup_videos()  # the files are kept a few days, for the TikTok button
         if db.get_setting("paused") == "1":
             return
         await self.post_tiktok_due()
@@ -340,8 +350,11 @@ class ShortsBot(discord.Client):
         """TikTok version of a candidate. The candidate itself can still be picked for YouTube."""
         row = db.get(clip_id)
         video = pipeline.video_path(clip_id)
-        if row is None or row["status"] != "candidate" or not video.exists():
-            return "Deze short is al gebruikt of verlopen, dus ik heb het bestand niet meer."
+        if row is None or not video.exists():
+            return (
+                f"Het bestand van deze short is al opgeruimd (ik bewaar ze {pipeline.KEEP_VIDEOS_DAYS} dagen). "
+                "Gebruik `/tiktok_clip` met de link van de clip."
+            )
         copy = await asyncio.to_thread(pipeline.tiktok_version, video)
         if copy is None:
             return "⚠️ TikTok-versie maken mislukt."
@@ -556,8 +569,7 @@ class ShortsBot(discord.Client):
             row = db.get(clip_id)
             if row is None or row["status"] != "candidate":
                 return False, "Deze short is al gekozen of verlopen."
-            db.mark(pipeline.clip_from_row(row), "rejected")
-            pipeline.video_path(clip_id).unlink(missing_ok=True)
+            db.mark(pipeline.clip_from_row(row), "rejected")  # the file stays a few days, for the TikTok button
             return True, f"❌ Afgekeurd. Nog {len(db.candidates())} over om uit te kiezen."
 
     async def pick(self, clip_id: str, auto: bool = False) -> tuple[bool, str]:

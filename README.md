@@ -142,7 +142,8 @@ Je mag er zoveel kiezen als je wilt, tot een week vooruit. Shorts voor vandaag e
 de rest onthoudt de bot en uploadt hij een dag van tevoren (YouTube staat maar ~6 uploads per dag toe).
 Staat je laptop op dat moment uit, dan schuift hij de short door naar de eerstvolgende vrije tijd.
 Met **❌ Afkeuren** gooi je een short weg; die wordt nooit gebruikt, ook niet als de bot zelf kiest.
-Met **📱 TikTok** krijg je de TikTok-versie van die short; hij blijft gewoon te kiezen voor YouTube.
+Met **📱 TikTok** krijg je de TikTok-versie van die short; hij blijft gewoon te kiezen voor YouTube. De TikTok-knop
+blijft ook staan na kiezen of afkeuren: de bot bewaart de video's 3 dagen.
 Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met de meeste views.
 `/kiesmodus aantal:0` zet hem weer op volledig automatisch.
 

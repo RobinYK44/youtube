@@ -541,9 +541,27 @@ def publish(clip: Clip, video: Path, slot: datetime | None = None) -> str:
     db.mark(clip, "uploaded", video_id, slot.isoformat() if slot else "")
     if tiktok_enabled():
         db.set_tiktok(clip.id, "queued")  # posted at its publish time by the bot, see post_tiktok
-    else:
+    return video_id  # the file is kept a few days for the TikTok button, see cleanup_videos
+
+
+KEEP_VIDEOS_DAYS = 3
+
+
+def cleanup_videos() -> None:
+    """Delete rendered Shorts older than KEEP_VIDEOS_DAYS, except ones still waiting to be picked or uploaded."""
+    if not OUTPUT_DIR.exists():
+        return
+    oldest = datetime.now().timestamp() - KEEP_VIDEOS_DAYS * 86400
+    for video in OUTPUT_DIR.glob("*.mp4"):
+        try:
+            if video.stat().st_mtime > oldest:
+                continue
+        except FileNotFoundError:
+            continue
+        row = db.get(video.stem)
+        if row and (row["status"] in ("candidate", "queued") or row["tiktok_status"] == "queued"):
+            continue
         video.unlink(missing_ok=True)
-    return video_id
 
 
 def tiktok_enabled() -> bool:
