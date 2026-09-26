@@ -475,6 +475,8 @@ class ShortsBot(discord.Client):
         extra = f" in Vyro-stijl ({tags}, geen eigen logo's)" if vyro else ""
         await self.say(f"✂️ Ik knip **{len(clips)} momenten** uit **{title}**{extra}. Kies met **✅**.")
         for number, clip in enumerate(clips, 1):
+            if db.get_setting("paused") == "1":
+                return
             await self.make_candidate(clip, number, len(clips))
 
     async def make_compilations(self, count: int) -> None:
