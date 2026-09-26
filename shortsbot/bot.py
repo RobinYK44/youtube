@@ -22,6 +22,9 @@ TIKTOK_GAP = timedelta(minutes=45)  # never post to TikTok more often than this,
 PICK_AHEAD_HOURS = 7 * 24  # kiesmodus: picked Shorts may fill publish times up to a week ahead
 UPLOAD_AHEAD = timedelta(hours=24)  # picked Shorts are uploaded to YouTube this long before their publish time
 STATS_EVERY = timedelta(hours=12)
+WATCH_MINUTES = 30  # /letop: clips made in the last half hour
+WATCH_PER_ROUND = 2  # at most this many new clips every 3 minutes
+WATCH_SAME_STREAMER = timedelta(minutes=30)  # not 10 clips of the same moment
 MAX_UPLOADS_PER_DAY = 6  # YouTube API quota: 10,000 units a day, an upload costs 1,600
 
 
@@ -127,7 +130,7 @@ class TikTokButton(discord.ui.DynamicItem[discord.ui.Button], template=r"tiktok:
 
 
 class PostNowButton(discord.ui.DynamicItem[discord.ui.Button], template=r"now:(?P<clip_id>.+)"):
-    """'Nu online' button under a fresh clip from /actueel: upload it and make it public right away."""
+    """'Nu online' button under a clip from /actueel or /letop: upload it and make it public right away."""
 
     def __init__(self, clip_id: str):
         super().__init__(
@@ -163,6 +166,7 @@ class ShortsBot(discord.Client):
         self.retry_at = datetime.min.replace(tzinfo=timezone.utc)
         self.queue_retry_at = datetime.min.replace(tzinfo=timezone.utc)
         self.batch_task: asyncio.Task | None = None
+        self.watch_seen: dict[str, datetime] = {}  # /letop: when each streamer last got a new clip sent
         register_commands(self)
 
     @property
@@ -176,6 +180,7 @@ class ShortsBot(discord.Client):
     async def setup_hook(self):
         self.add_dynamic_items(PickButton, RejectButton, TikTokButton, PostNowButton)
         self.scheduler.start()
+        self.watcher.start()
 
     async def on_ready(self):
         if self.channel:  # on_ready fires again after reconnects
@@ -192,6 +197,7 @@ class ShortsBot(discord.Client):
             "Typ `/status` voor info."
             + ("\n⏸️ Let op: ik sta nog op **pauze** en zoek geen nieuwe shorts. Typ `/hervat` om verder te gaan."
                if db.get_setting("paused") == "1" else "")
+            + ("\n👀 Ik let op nieuwe clips (`/letop aan:False` om te stoppen)." if db.get_setting("watch") == "1" else "")
         )
 
     async def say(self, text: str, **kwargs):
@@ -549,6 +555,29 @@ class ShortsBot(discord.Client):
                 return
             await self.make_candidate(pipeline.compilation_clip(parts), number, count)
 
+    @tasks.loop(minutes=3)
+    async def watcher(self):
+        """/letop: every few minutes, new clips of the favourite streamers from the last minutes."""
+        if db.get_setting("watch") != "1" or db.get_setting("paused") == "1":
+            return
+        if self.lock.locked() or self.making_batch:
+            return  # busy making Shorts; look again next round
+        now = datetime.now(timezone.utc)
+        skip = {login for login, seen in self.watch_seen.items() if now - seen < WATCH_SAME_STREAMER}
+        minutes = int(db.get_setting("watch_minutes") or WATCH_MINUTES)
+        try:
+            clips = await asyncio.to_thread(pipeline.new_clips, minutes, skip)
+        except Exception:
+            log.exception("Nieuwe clips zoeken mislukt")
+            return
+        for clip in clips[:WATCH_PER_ROUND]:
+            self.watch_seen[clip.broadcaster_login] = now
+            await self.make_candidate(clip, 1, 1, fresh="new")
+
+    @watcher.before_loop
+    async def _watcher_wait_ready(self):
+        await self.wait_until_ready()
+
     async def fresh(self, hours: float) -> None:
         """/actueel: clips that are blowing up right now, or nothing at all."""
         try:
@@ -567,7 +596,7 @@ class ShortsBot(discord.Client):
             "zodat je er als een van de eersten bij bent."
         )
         for number, clip in enumerate(clips, 1):
-            await self.make_candidate(clip, number, len(clips), fresh=True)
+            await self.make_candidate(clip, number, len(clips), fresh="hot")
 
     async def post_now(self, clip_id: str) -> tuple[bool, str]:
         """Upload a candidate and make it public right away, without waiting for a publish time."""
@@ -584,7 +613,8 @@ class ShortsBot(discord.Client):
                 return False, "Het videobestand van deze short bestaat niet meer."
             return await self._publish(clip, video, None)
 
-    async def make_candidate(self, clip: Clip, number: int, total: int, fresh: bool = False):
+    async def make_candidate(self, clip: Clip, number: int, total: int, fresh: str = ""):
+        """fresh: 'hot' (/actueel) or 'new' (/letop) adds the Post-now button."""
         async with self.lock:
             try:
                 video = await asyncio.to_thread(pipeline.render, clip)
@@ -610,6 +640,13 @@ class ShortsBot(discord.Client):
                 for i, part in enumerate(clip.parts)
             )
             text = f"🎞️ **Compilatie {number}/{total}** · **{clip.title}**{lines}\n{hashtags}"
+        elif fresh == "new":
+            text = (
+                f"🆕 **Net gebeurd** · **{clip.title}** — {clip.broadcaster_name}"
+                f"\n⏱️ {pipeline.minutes_old(clip):.0f} min geleden · {clip.view_count:,} views"
+                + (f" · {clip.score:.0f} clips van dit moment" if clip.score > 1 else "")
+                + f"\n{hashtags}\n<{clip.url}>"
+            )
         elif clip.source != "twitch":
             label = "💰 **Vyro** · " if clip.source == "vyro" else "▶️ **YouTube** · "
             minute, second = divmod(int(clip.start), 60)
@@ -808,6 +845,22 @@ def register_commands(bot: ShortsBot):
             await interaction.response.send_message(
                 "🎵 TikTok staat aan: na elke upload stuur ik je de TikTok-versie en de tekst om te plakken."
             )
+
+    @tree.command(name="letop", description="Blijf letten op nieuwe clips van je streamers (van de laatste minuten)")
+    @app_commands.describe(aan="Aan of uit (standaard aan)", minuten="Hoe nieuw de clips moeten zijn (standaard 30)")
+    @admin
+    async def watch(
+        interaction: discord.Interaction, aan: bool = True, minuten: app_commands.Range[int, 5, 120] = WATCH_MINUTES
+    ):
+        db.set_setting("watch", "1" if aan else "0")
+        db.set_setting("watch_minutes", str(minuten))
+        if not aan:
+            await interaction.response.send_message("👀 Ik let niet meer op nieuwe clips.")
+            return
+        await interaction.response.send_message(
+            f"👀 Ik let nu elke 3 minuten op **nieuwe clips** van je streamers (gemaakt in de laatste {minuten} min). "
+            "Zodra er iets gebeurt, stuur ik hem hier met **🚀 Nu online**. Uitzetten: `/letop aan:False`."
+        )
 
     @tree.command(name="actueel", description="Zoek clips die nu net ontploffen, om er als eerste bij te zijn")
     @app_commands.describe(uren="Hoe nieuw (standaard: gemaakt in de laatste 6 uur)")

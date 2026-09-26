@@ -236,6 +236,50 @@ def fresh_clips(hours: float, count: int = 3) -> list[Clip]:
     return _take_turns(found, count, cap=1)  # at most one per streamer
 
 
+WATCH_MIN_VIEWS = 10  # a clip only minutes old has few views; this just skips clips nobody watched
+
+
+def minutes_old(clip: Clip) -> float:
+    try:
+        created = datetime.fromisoformat(clip.created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return (datetime.now(timezone.utc) - created).total_seconds() / 60
+
+
+def new_clips(minutes: int, skip: set[str] = frozenset()) -> list[Clip]:
+    """Clips of the favourite streamers made in the last `minutes` minutes: something just happened.
+    One per streamer (the most watched); streamers where several people clipped something just now come first."""
+    users = twitch.user_ids([login for login in favourite_streamers() if login not in skip])
+    found = []
+    for login, (user_id, name) in users.items():
+        try:
+            clips = twitch.top_clips(login, user_id, name, minutes / 1440)
+        except Exception:
+            log.exception("Nieuwe clips ophalen mislukt voor %s", login)
+            continue
+        new = [
+            c for c in clips
+            if minutes_old(c) <= minutes
+            and config.min_clip_seconds <= c.duration <= config.max_short_seconds + 1
+            and c.view_count >= WATCH_MIN_VIEWS
+            and not db.is_known(c.id)
+        ]
+        if new:
+            best = max(new, key=lambda c: c.view_count)
+            best.score = float(len(new))  # how many people clipped something in these minutes
+            found.append(best)
+    try:
+        games = twitch.game_names(sorted({c.game_id for c in found}))
+    except Exception:
+        games = {}
+    for clip in found:
+        clip.game = games.get(clip.game_id, "")
+        clip.title = youtube.better_title(clip)
+    found.sort(key=lambda c: (c.score, c.view_count), reverse=True)
+    return found
+
+
 def _take_turns(clips: list[Clip], count: int, cap: int, already: list[Clip] = ()) -> list[Clip]:
     """Every streamer's best clip first, then every streamer's second best, and so on, at most `cap` per streamer
     (counting `already`). So a streamer with lots of popular clips (like xQc) cannot fill the whole list."""
