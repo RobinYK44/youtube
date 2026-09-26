@@ -66,7 +66,15 @@ python main.py
 ```
 De bot zegt hallo in je Discord-kanaal en maakt vanaf nu automatisch shorts. 🎉
 
-**24/7 laten draaien:** laat je pc aanstaan, of zet het op een goedkope server (VPS, ± €4/maand bij bijv. Hetzner). Met Docker:
+**24/7 laten draaien:** laat je pc aanstaan, of zet het op een goedkope server (VPS, ± €4/maand bij bijv. Hetzner, Ubuntu).
+Log in op de server (`ssh root@IP-ADRES`) en plak:
+```bash
+curl -fsSL https://raw.githubusercontent.com/RobinYK44/youtube/claude/youtube-shorts-streamers-b2gowb/server/install.sh | bash
+```
+Dubbelklik daarna op je pc op `naar_server.bat` om je `.env` en logins erop te zetten. Stop daarna de bot op je pc.
+Updaten op de server: plak hetzelfde commando nog een keer.
+
+Of met Docker:
 ```bash
 docker build -t shortsbot .
 docker run -d --restart always --name shortsbot \
