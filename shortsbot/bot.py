@@ -260,11 +260,12 @@ class ShortsBot(discord.Client):
         now = datetime.now(timezone.utc)
         db.expire_candidates((now - CANDIDATE_MAX_AGE).isoformat())
         pipeline.cleanup_videos()  # the files are kept a few days, for the TikTok button
-        if db.get_setting("paused") == "1":
-            return
+        # Shorts the owner already chose still go online during a pause; only finding and making new ones stops.
         await self.post_tiktok_due()
         await self.upload_queued()
         await self.update_stats_if_due()
+        if db.get_setting("paused") == "1":
+            return
         if now < self.retry_at:
             return
         if pipeline.candidates_per_day():
@@ -960,13 +961,16 @@ def register_commands(bot: ShortsBot):
         pipeline.remove_streamer(naam)
         await interaction.response.send_message(f"➖ **{naam}** verwijderd.")
 
-    @tree.command(name="pauze", description="Stop tijdelijk met uploaden")
+    @tree.command(name="pauze", description="Stop tijdelijk met nieuwe shorts zoeken en maken")
     @admin
     async def pause(interaction: discord.Interaction):
         db.set_setting("paused", "1")
-        await interaction.response.send_message("⏸️ Gepauzeerd. Gebruik `/hervat` om verder te gaan.")
+        await interaction.response.send_message(
+            "⏸️ Gepauzeerd: ik zoek en maak geen nieuwe shorts meer. Shorts die je al gekozen hebt, zet ik gewoon "
+            "nog online. Gebruik `/hervat` om weer verder te gaan."
+        )
 
-    @tree.command(name="hervat", description="Ga weer verder met uploaden")
+    @tree.command(name="hervat", description="Ga weer verder met shorts zoeken en maken")
     @admin
     async def resume(interaction: discord.Interaction):
         db.set_setting("paused", "0")

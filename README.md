@@ -133,7 +133,7 @@ TikTok-app (melding/inbox) en de tekst naar Discord; jij drukt in TikTok op post
 | `/streamer_verwijderen naam` | Streamer weghalen |
 | `/tijden 18:00, 21:00, 00:00, 02:00` | Kiezen op welke tijden de shorts online komen |
 | `/tiktok aan` | TikTok-versies (of automatisch posten) aan- of uitzetten |
-| `/pauze` / `/hervat` | Tijdelijk stoppen / weer verder |
+| `/pauze` / `/hervat` | Tijdelijk stoppen met nieuwe shorts zoeken en maken / weer verder (gekozen shorts gaan wel gewoon online) |
 | `/ingepland_wissen` | Tijden van ingeplande shorts weer vrijmaken (verwijder de video's zelf in YouTube Studio) |
 
 ### Kiesmodus: zelf de beste kiezen
