@@ -290,7 +290,8 @@ class ShortsBot(discord.Client):
                     self.queue_retry_at = now + RETRY_AFTER
                     await self.say(f"{text}\nIk probeer **{clip.title}** later opnieuw.")
                     return
-            await self.say(text)
+            picked = _local_time(datetime.fromisoformat(row["updated_at"])) if row["updated_at"] else "eerder"
+            await self.say(f"📦 **{clip.title}** ({clip.broadcaster_name}), die je {picked} koos, is nu geüpload.\n{text}")
 
     @tasks.loop(minutes=5)
     async def scheduler(self):

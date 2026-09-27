@@ -61,19 +61,45 @@ def moods(title: str) -> list[str]:
 
 # Titles for clips whose Twitch title says nothing ("asfsaf", "WOOO"). The emoji keep the mood for the hashtags.
 TITLE_TEMPLATES = {
-    "funny": ["{name} had chat CRYING 😂", "{name} couldn't stop laughing 😂", "This is why {name} is so funny 😂"],
-    "rage": ["{name} completely lost it 😡", "{name} RAGED so hard 😡"],
-    "scary": ["{name} got SO scared 😱", "{name} was not ready for this 😱"],
-    "clutch": ["{name} actually pulled this off 🔥", "{name} went CRAZY here 🔥"],
-    "fail": ["{name} fumbled this so bad 💀", "It all went wrong for {name} 💀"],
-    "wholesome": ["{name} made chat so happy ❤️", "Most wholesome {name} moment ❤️"],
-    "music": ["{name} started singing 🎵", "{name} had chat vibing 🎵"],
+    "funny": [
+        "{name} had chat CRYING 😂", "{name} couldn't stop laughing 😂", "This is why {name} is so funny 😂",
+        "{name} made the whole stream laugh 😂", "I can't stop replaying this {name} clip 😂",
+        "{name} said WHAT?! 😂", "Chat was not ready for {name} 😂",
+    ],
+    "rage": [
+        "{name} completely lost it 😡", "{name} RAGED so hard 😡", "Never make {name} this mad 😡",
+        "{name} was NOT having it 😡", "Chat pushed {name} too far 😡",
+    ],
+    "scary": [
+        "{name} got SO scared 😱", "{name} was not ready for this 😱", "{name} almost fell off the chair 😱",
+        "Why did {name} even play this 😱",
+    ],
+    "clutch": [
+        "{name} actually pulled this off 🔥", "{name} went CRAZY here 🔥", "Nobody thought {name} could do this 🔥",
+        "{name} is actually cracked 🔥", "{name}'s best play ever? 🔥",
+    ],
+    "fail": [
+        "{name} fumbled this so bad 💀", "It all went wrong for {name} 💀", "{name} will never live this down 💀",
+        "Worst timing ever for {name} 💀", "{name} really thought this would work 💀",
+    ],
+    "wholesome": ["{name} made chat so happy ❤️", "Most wholesome {name} moment ❤️", "This {name} moment hit different ❤️"],
+    "music": ["{name} started singing 🎵", "{name} had chat vibing 🎵", "{name} dropped a banger 🎵"],
     "": [
         "{name} can't believe this happened 😭", "Nobody expected {name} to do this 💀",
         "{name}'s reaction is priceless 😭", "Wait for {name}'s reaction 💀", "{name} had chat going crazy 😭",
-        "This {name} moment is insane 💀",
+        "This {name} moment is insane 💀", "Chat saw everything 😭", "{name} did NOT see this coming 💀",
+        "{name} was speechless 😶", "How did this even happen to {name} 😭", "Watch till the end 💀",
+        "Chat will never forget this 😭", "{name} broke the stream 💀", "{name}'s face says it all 😭",
+        "{name} instantly regretted this 💀", "This is peak {name} 😭",
     ],
 }
+GAME_TITLES = [
+    "Only {name} could do this in {game} 💀", "{name} vs {game} 😭", "{game} with {name} is pure chaos 💀",
+    "{name} + {game} = chaos 😭", "{name} found a new way to play {game} 💀",
+]
+# Not game names people search for: no "{name} in Just Chatting".
+NO_GAME = {"just chatting", "irl", "talk shows & podcasts", "special events", "music", ""}
+_given: list[str] = []  # titles given since the bot started, also for candidates that are not saved yet
 
 
 def says_nothing(title: str) -> bool:
@@ -81,15 +107,45 @@ def says_nothing(title: str) -> bool:
     return len(words) < 3 or sum(len(w) for w in words) < 12
 
 
+def _shape(title: str, name: str, game: str = "") -> str:
+    """'xQc had chat CRYING 😂' -> '{name} had chat CRYING 😂', so the same kind of title is spotted for anyone."""
+    for value, key in ((name, "{name}"), (game, "{game}")):
+        if value:
+            title = re.sub(re.escape(value), key, title, flags=re.IGNORECASE)
+    return title
+
+
+def _recent_shapes() -> list[str]:
+    """Kinds of titles used lately, newest first."""
+    from . import db
+
+    try:
+        rows = db.recent_titles(80)
+    except Exception:
+        rows = []
+    saved = [_shape(r["title"] or "", (r["broadcaster_name"] or "").strip("_"), r["game"] or "") for r in rows]
+    return _given[::-1] + saved
+
+
 def better_title(clip) -> str:
-    """Keep a clear Twitch title, replace a meaningless one ('asfsaf', 'WOOO', 'sucks')."""
+    """Keep a clear Twitch title, replace a meaningless one ('asfsaf', 'WOOO', 'sucks') with the kind of title
+    that was used longest ago, so the channel does not show the same title over and over."""
     if not says_nothing(clip.title):
         return clip.title
     mood = next(iter(moods(clip.title)), "")
-    options = TITLE_TEMPLATES[mood]
-    pick = int(hashlib.sha1(clip.id.encode()).hexdigest(), 16) % len(options)  # stable for the same clip
+    game = getattr(clip, "game", "") or ""
+    options = TITLE_TEMPLATES[mood] + (TITLE_TEMPLATES[""] if mood else [])
+    if game.lower() not in NO_GAME:
+        options += GAME_TITLES
+    recent = _recent_shapes()
+    last_used = {o: recent.index(o) if o in recent else len(recent) + 1 for o in options}  # higher = longer ago
+    oldest = max(last_used.values())
+    fresh = [o for o in options if last_used[o] == oldest]
+    choice = fresh[int(hashlib.sha1(clip.id.encode()).hexdigest(), 16) % len(fresh)]
+    _given.append(choice)
+    del _given[:-200]
     name = clip.broadcaster_name.strip("_")
-    return options[pick].format(name=name.capitalize() if name.islower() else name)
+    return choice.format(name=name.capitalize() if name.islower() else name, game=game)
 
 
 def make_hashtags(clip, minimum: int = 6, maximum: int = 8) -> list[str]:

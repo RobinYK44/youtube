@@ -4,6 +4,8 @@ YouTube shows a "most replayed" graph above the timeline of popular videos; yt-d
 The peaks in that graph are almost always the funniest or craziest moments.
 """
 import logging
+import math
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -101,6 +103,39 @@ def moments(info: dict, count: int = 3, length: int = MOMENT_SECONDS) -> list[tu
         if len(chosen) == count:
             break
     return chosen
+
+
+# "4:32" or "1:02:45" in a comment: people point at the moments that made them laugh.
+TIMESTAMP = re.compile(r"(?<![\d:])(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?![\d:])")
+MIN_TIMESTAMP_COMMENTS = 3
+
+
+def comment_heatmap(url: str, duration: float) -> list[dict]:
+    """A stand-in for the 'most replayed' graph, from timestamps in the top comments. New videos and long
+    streams often have no graph yet, but their comments already say where the best moments are."""
+    opts = {
+        "skip_download": True,
+        "getcomments": True,
+        "extractor_args": {"youtube": {"max_comments": ["300", "300", "0", "0"], "comment_sort": ["top"]}},
+    }
+    with _ydl(**opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    votes: dict[int, float] = {}
+    comments = 0
+    for comment in info.get("comments") or []:
+        seen = set()
+        for hours, minutes, seconds in TIMESTAMP.findall(comment.get("text") or ""):
+            moment = int(hours or 0) * 3600 + int(minutes) * 60 + int(seconds)
+            if not duration * SKIP_START <= moment <= duration - 5 or moment // 10 in seen:
+                continue
+            seen.add(moment // 10)
+            votes[moment // 10] = votes.get(moment // 10, 0) + 1 + math.log1p(comment.get("like_count") or 0)
+        comments += bool(seen)
+    if comments < MIN_TIMESTAMP_COMMENTS:
+        return []
+    top = max(votes.values())
+    # A bit below a real graph's heat: a few comments say less than millions of replays.
+    return [{"start_time": b * 10, "end_time": b * 10 + 10, "value": 0.8 * v / top} for b, v in votes.items()]
 
 
 def make_clip(info: dict, start: float, heat: float, source: str = "youtube", tags: list[str] | None = None) -> Clip:

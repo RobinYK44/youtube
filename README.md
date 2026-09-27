@@ -183,7 +183,7 @@ indient. Lees altijd de regels van de campagne: die verschillen per maker.
 | `YOUTUBE_PRIVACY` | public | `public`, `unlisted` of `private` |
 | `CLIP_LOOKBACK_DAYS` | 2 | Hoe ver terug zoeken naar clips |
 | `CLIP_LOOKBACK_MAX_DAYS` | 14 | Hebben je vaste streamers te weinig nieuwe clips, dan zoekt hij zo ver terug naar populaire oudere clips |
-| `YOUTUBE_CHANNELS` | ishowspeed,mrbeast | YouTube-kanalen om momenten uit te knippen (leeg = alleen Twitch). Ook via `/youtuber_toevoegen` |
+| `YOUTUBE_CHANNELS` | ishowspeed,mrbeast,jynxzi,kaicenat,stableronaldo | YouTube-kanalen om momenten uit te knippen (leeg = alleen Twitch). Ook via `/youtuber_toevoegen` |
 | `MIN_CLIP_VIEWS` | 3000 | Alleen clips met minstens zoveel views |
 | `MIN_CLIP_SECONDS` | 10 | Alleen clips van minstens zoveel seconden |
 | `MAX_SHORT_SECONDS` | 60 | Maximale lengte van de short |

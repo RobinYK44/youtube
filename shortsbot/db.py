@@ -158,6 +158,12 @@ def recent_uploads(limit: int = 5) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def recent_titles(limit: int = 60) -> list[sqlite3.Row]:
+    return _conn.execute(
+        "SELECT title, broadcaster_name, game FROM clips WHERE title IS NOT NULL ORDER BY updated_at DESC LIMIT ?", (limit,)
+    ).fetchall()
+
+
 def get_setting(key: str, default: str = "") -> str:
     row = _conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else default

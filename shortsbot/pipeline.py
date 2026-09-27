@@ -408,15 +408,19 @@ def moment_used(video_id: str, start: float) -> bool:
 youtube_report: dict = {}
 
 
+COMMENT_LOOKUPS = 6  # reading comments is slow, so only for a few videos per search
+
+
 def youtube_candidates(count: int, per_video: int = 2) -> list[Clip]:
     """The most re-watched unused moments from the newest videos and streams of the YouTube channels."""
     found = []
     learned = performance()
-    report = {"videos": 0, "too_old": 0, "no_heatmap": 0, "used": 0, "errors": []}
+    report = {"videos": 0, "too_old": 0, "no_heatmap": 0, "from_comments": 0, "used": 0, "errors": []}
     youtube_report.clear()
     youtube_report.update(report)
+    comment_lookups = 0
     for channel in youtube_channels():
-        for url in ytclips.latest_videos(channel, errors=youtube_report["errors"]):
+        for url in ytclips.latest_videos(channel, per_tab=5, errors=youtube_report["errors"]):
             youtube_report["videos"] += 1
             try:
                 info = ytclips.video_info(url)
@@ -424,12 +428,22 @@ def youtube_candidates(count: int, per_video: int = 2) -> list[Clip]:
                 log.exception("YouTube-video ophalen mislukt: %s", url)
                 youtube_report["errors"].append(f"{url}: {exc}")
                 continue
-            if ytclips.age_days(info) > config.clip_lookback_max_days:
+            if ytclips.age_days(info) > config.youtube_max_days:
                 youtube_report["too_old"] += 1
                 continue
             all_moments = ytclips.moments(info, 4)
+            if not all_moments and comment_lookups < COMMENT_LOOKUPS:
+                comment_lookups += 1
+                try:
+                    heatmap = ytclips.comment_heatmap(url, info.get("duration") or 0)
+                except Exception:
+                    log.exception("Reacties ophalen mislukt: %s", url)
+                    heatmap = []
+                all_moments = ytclips.moments({**info, "heatmap": heatmap}, 4)
             if not all_moments:
                 youtube_report["no_heatmap"] += 1
+            elif not info.get("heatmap"):
+                youtube_report["from_comments"] += 1
             moments = [(s, h) for s, h in all_moments if not moment_used(info["id"], s)]
             if all_moments and not moments:
                 youtube_report["used"] += 1
@@ -449,9 +463,11 @@ def youtube_report_text() -> str:
         return ""
     parts = [f"{r.get('videos', 0)} video's bekeken"]
     if r.get("too_old"):
-        parts.append(f"{r['too_old']} ouder dan {config.clip_lookback_max_days} dagen")
+        parts.append(f"{r['too_old']} ouder dan {config.youtube_max_days} dagen")
     if r.get("no_heatmap"):
-        parts.append(f"{r['no_heatmap']} zonder 'meest herbekeken'-grafiek")
+        parts.append(f"{r['no_heatmap']} zonder 'meest herbekeken'-grafiek of tijden in de reacties")
+    if r.get("from_comments"):
+        parts.append(f"{r['from_comments']} via tijden in de reacties")
     if r.get("used"):
         parts.append(f"{r['used']} al helemaal gebruikt")
     text = ", ".join(parts)
@@ -467,7 +483,10 @@ def clip_video(url: str, count: int, vyro: bool = False, hashtags: str = "") -> 
     if vyro:
         handle = (info.get("uploader_id") or info.get("channel") or "").lstrip("@").lower()
         tags = [t.lstrip("#").lower() for t in hashtags.replace(",", " ").split()] or [handle, handle + "partner"]
-    moments = [(s, h) for s, h in ytclips.moments(info, count + 10) if not moment_used(info["id"], s)][:count]
+    found = ytclips.moments(info, count + 10)
+    if not found:  # no 'most replayed' graph yet: use the times people mention in the comments
+        found = ytclips.moments({**info, "heatmap": ytclips.comment_heatmap(url, info.get("duration") or 0)}, count + 10)
+    moments = [(s, h) for s, h in found if not moment_used(info["id"], s)][:count]
     clips = [ytclips.make_clip(info, s, h, "vyro" if vyro else "youtube", tags) for s, h in moments]
     return clips, info.get("title") or url
 

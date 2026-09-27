@@ -8,7 +8,7 @@ load_dotenv()
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
-VERSION = "26 sep, 22:30"  # shown in Discord, so it is easy to see whether an update arrived
+VERSION = "27 sep, 22:00"  # shown in Discord, so it is easy to see whether an update arrived
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -31,6 +31,13 @@ def _list(name: str, default: str = "") -> list[str]:
 
 
 DEFAULT_STREAMERS = "jynxzi,stableronaldo,lacy,marlon,kaicenat,caseoh_,xqc,fanum,adapt"
+DEFAULT_YOUTUBERS = "ishowspeed,mrbeast,jynxzi,kaicenat,stableronaldo"
+
+
+def _youtubers() -> list[str]:
+    channels = _list("YOUTUBE_CHANNELS", DEFAULT_YOUTUBERS)
+    # The old default got copied into .env files; it had too few channels to find anything most days.
+    return DEFAULT_YOUTUBERS.split(",") if channels == ["ishowspeed", "mrbeast"] else channels
 
 
 @dataclass
@@ -67,7 +74,9 @@ class Config:
     # When the favourite streamers have too few new clips, look this far back (popular older clips still do well).
     clip_lookback_max_days: int = _int("CLIP_LOOKBACK_MAX_DAYS", 14)
     # YouTube channels to clip from (their newest videos and streams). Can be changed with /youtuber_toevoegen.
-    youtube_channels: list[str] = field(default_factory=lambda: _list("YOUTUBE_CHANNELS", "ishowspeed,mrbeast"))
+    youtube_channels: list[str] = field(default_factory=_youtubers)
+    # Popular YouTube videos stay popular much longer than Twitch clips, so older ones are still worth clipping.
+    youtube_max_days: int = _int("YOUTUBE_MAX_DAYS", 60)
     # Big word-by-word captions (needs faster-whisper, installed by update.bat). base.en is fast, small.en more precise.
     captions: bool = os.getenv("CAPTIONS", "1").strip().lower() not in ("0", "false", "nee", "uit")
     caption_model: str = os.getenv("CAPTION_MODEL", "").strip() or "base.en"
