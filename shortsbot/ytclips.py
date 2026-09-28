@@ -159,6 +159,11 @@ def make_clip(info: dict, start: float, heat: float, source: str = "youtube", ta
 
 def download(clip: Clip, dest_dir: Path, ffmpeg: str) -> Path:
     """Download only the moment itself, not the whole video."""
+    # yt-dlp checks for ffmpeg in a spot that ignores the ffmpeg_location option (only its own command line sets
+    # it), so without ffmpeg on PATH (like the one from imageio-ffmpeg) it thinks ffmpeg is missing. Tell it there.
+    from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
+
+    FFmpegPostProcessor._ffmpeg_location.set(ffmpeg)
     opts = {
         "outtmpl": str(dest_dir / "source.%(ext)s"),
         "format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b",

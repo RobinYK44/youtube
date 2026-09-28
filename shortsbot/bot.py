@@ -1,6 +1,7 @@
 """Discord bot: runs the pipeline on a schedule and lets you control it with slash commands."""
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,7 @@ from .twitch import Clip
 
 log = logging.getLogger("shortsbot")
 RETRY_AFTER = timedelta(minutes=30)
+BATCH_SPARES = 8  # extra Twitch clips per batch, to make instead of a short that fails
 BATCH_MIN_GAP = timedelta(hours=6)  # kiesmodus: a new batch every new day, but not right after one made at midnight
 AUTO_PICK_BEFORE = timedelta(minutes=45)  # kiesmodus: pick the best one yourself if the owner did not
 CANDIDATE_MAX_AGE = timedelta(hours=48)
@@ -34,7 +36,7 @@ def _local_time(moment: datetime) -> str:
 
 
 def _error_text(exc: Exception) -> str:
-    text = str(exc)
+    text = re.sub(r"\x1b\[[0-9;]*m", "", str(exc))  # yt-dlp colours its errors for the terminal
     if "quotaExceeded" in text or "uploadLimitExceeded" in text:
         return "YouTube-limiet voor vandaag bereikt. Morgen gaat de bot automatisch verder."
     if "invalid_grant" in text:
@@ -545,7 +547,7 @@ class ShortsBot(discord.Client):
         """Render `count` new candidates and post them. `header` may contain {n}. False when none were found.
         daily='new' starts the day's batch, 'resume' finishes one that was cut off by closing the bot."""
         try:
-            clips = await asyncio.to_thread(pipeline.pick_mixed, count)
+            clips, spares = await asyncio.to_thread(pipeline.pick_mixed, count, BATCH_SPARES)
         except Exception as exc:
             log.exception("Clips zoeken mislukt")
             await self.say(f"⚠️ Clips zoeken mislukt: {_error_text(exc)}")
@@ -565,13 +567,21 @@ class ShortsBot(discord.Client):
         await self.say(header.format(n=len(clips)))
         if pipeline.youtube_channels() and not any(c.source != "twitch" for c in clips):
             await self.say(f"▶️ Geen YouTube-momenten gevonden deze keer ({pipeline.youtube_report_text()}).")
-        for number, clip in enumerate(clips, 1):
+        todo, made = list(clips), 0
+        while todo and made < len(clips):
             if db.get_setting("paused") == "1":
                 return True
-            await self.make_candidate(clip, number, len(clips))
-            if daily:
-                db.set_setting("batch_left", str(len(clips) - number))
-        await self.say(f"👍 Alle {len(clips)} shorts staan klaar. Kies je favorieten!")
+            clip = todo.pop(0)
+            if await self.make_candidate(clip, made + 1, len(clips), replaceable=bool(spares)):
+                made += 1
+                if daily:
+                    db.set_setting("batch_left", str(len(clips) - made))
+            elif spares:
+                todo.insert(0, spares.pop(0))  # one failed: make another one in its place
+        if made == len(clips):
+            await self.say(f"👍 Alle {made} shorts staan klaar. Kies je favorieten!")
+        else:
+            await self.say(f"👍 {made} van de {len(clips)} shorts staan klaar (de rest lukte niet). Kies je favorieten!")
         return True
 
     async def clip_video(self, url: str, count: int, vyro: bool, hashtags: str) -> None:
@@ -680,16 +690,17 @@ class ShortsBot(discord.Client):
                 return False, "Het videobestand van deze short bestaat niet meer."
             return await self._publish(clip, video, None)
 
-    async def make_candidate(self, clip: Clip, number: int, total: int, fresh: str = ""):
-        """fresh: 'hot' (/actueel) or 'new' (/letop) adds the Post-now button."""
+    async def make_candidate(self, clip: Clip, number: int, total: int, fresh: str = "", replaceable: bool = False) -> bool:
+        """fresh: 'hot' (/actueel) or 'new' (/letop) adds the Post-now button. False when it could not be made."""
         async with self.lock:
             try:
                 video = await asyncio.to_thread(pipeline.render, clip)
             except Exception as exc:
                 log.exception("Renderen mislukt")
                 db.mark(clip, "failed")
-                await self.say(f"⚠️ Bewerken van {clip.title} mislukt: {_error_text(exc)}")
-                return
+                instead = " Ik maak een andere in de plaats." if replaceable else ""
+                await self.say(f"⚠️ Bewerken van **{clip.title}** mislukt: {_error_text(exc)}{instead}")
+                return False
             db.mark(clip, "candidate")
             for part in clip.parts:
                 db.mark(part, "in_compilation")  # never used again on its own
@@ -732,6 +743,7 @@ class ShortsBot(discord.Client):
         finally:
             if preview:
                 preview.unlink(missing_ok=True)
+        return True
 
     async def reject(self, clip_id: str) -> tuple[bool, str]:
         """Throw a candidate away. It will not be picked, also not automatically."""

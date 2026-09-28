@@ -526,19 +526,21 @@ def clip_from_link(url: str) -> Clip:
     return clip
 
 
-def pick_mixed(count: int) -> list[Clip]:
-    """Kiesmodus: half Twitch clips, half YouTube moments (fewer YouTube when there are not enough)."""
+def pick_mixed(count: int, spares: int = 0) -> tuple[list[Clip], list[Clip]]:
+    """Kiesmodus: half Twitch clips, half YouTube moments (fewer YouTube when there are not enough).
+    Also returns up to `spares` extra Twitch clips, to use when one of the others cannot be made."""
     try:
         youtube_clips = youtube_candidates(count // 2) if youtube_channels() else []
     except Exception as exc:
         log.exception("YouTube-clips zoeken mislukt")
         youtube_report["errors"] = [str(exc)]
         youtube_clips = []
-    twitch_clips = pick_candidates(count - len(youtube_clips))
+    needed = count - len(youtube_clips)
+    twitch_clips = pick_candidates(needed + spares)
     mixed = []
-    for i in range(max(len(youtube_clips), len(twitch_clips))):
-        mixed += twitch_clips[i : i + 1] + youtube_clips[i : i + 1]
-    return mixed
+    for i in range(max(len(youtube_clips), min(needed, len(twitch_clips)))):
+        mixed += twitch_clips[i : min(i + 1, needed)] + youtube_clips[i : i + 1]
+    return mixed, twitch_clips[needed:]
 
 
 def publish_times() -> list[str]:
