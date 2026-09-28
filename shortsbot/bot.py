@@ -15,7 +15,7 @@ from .twitch import Clip
 
 log = logging.getLogger("shortsbot")
 RETRY_AFTER = timedelta(minutes=30)
-BATCH_EVERY = timedelta(hours=20)  # kiesmodus: at most one new batch of candidates per day
+BATCH_MIN_GAP = timedelta(hours=6)  # kiesmodus: a new batch every new day, but not right after one made at midnight
 AUTO_PICK_BEFORE = timedelta(minutes=45)  # kiesmodus: pick the best one yourself if the owner did not
 CANDIDATE_MAX_AGE = timedelta(hours=48)
 TIKTOK_GAP = timedelta(minutes=45)  # never post to TikTok more often than this, also after catching up
@@ -76,6 +76,31 @@ def _watch_text(report: dict) -> str:
     if report.get("error"):
         lines.append(f"⚠️ fout bij Twitch: {report['error'][:150]}")
     return "\n".join(lines)
+
+
+def batch_due(now: datetime | None = None) -> bool:
+    """Kiesmodus: a new day (in the owner's time zone) means new candidates, whenever the bot is opened that day."""
+    last = db.get_setting("batch_at")
+    if not last:
+        return True
+    now = now or datetime.now(timezone.utc)
+    last_time = datetime.fromisoformat(last)
+    tz = ZoneInfo(config.timezone)
+    return last_time.astimezone(tz).date() < now.astimezone(tz).date() and now - last_time >= BATCH_MIN_GAP
+
+
+def _batch_text() -> str:
+    """Kiesmodus: when the next shorts come, so opening the bot and seeing nothing is not a mystery."""
+    if not pipeline.candidates_per_day() or db.get_setting("paused") == "1":
+        return ""
+    if not pipeline.open_slots(hours=PICK_AHEAD_HOURS):
+        return "\n📭 Alle tijden voor de komende 7 dagen zijn al gevuld, dus ik maak nu geen nieuwe shorts."
+    if batch_due():
+        return "\n🎞️ Ik ga zo de shorts van vandaag maken."
+    if int(db.get_setting("batch_left") or 0) > 0:
+        return "\n🎞️ Ik maak de shorts van vandaag verder af."
+    made = _local_time(datetime.fromisoformat(db.get_setting("batch_at")))
+    return f"\n✅ De shorts van vandaag heb ik al gemaakt ({made}). Morgen komen er nieuwe; meer nu? Typ `/meer`."
 
 
 def _tiktok_only(clip_id: str) -> discord.ui.View:
@@ -228,6 +253,7 @@ class ShortsBot(discord.Client):
             + ("\n⏸️ Let op: ik sta nog op **pauze** en zoek geen nieuwe shorts. Typ `/hervat` om verder te gaan."
                if db.get_setting("paused") == "1" else "")
             + ("\n👀 Ik let op nieuwe clips (`/letop aan:False` om te stoppen)." if db.get_setting("watch") == "1" else "")
+            + _batch_text()
         )
 
     async def say(self, text: str, **kwargs):
@@ -497,9 +523,7 @@ class ShortsBot(discord.Client):
 
     async def make_batch_if_due(self):
         """Once a day: make the day's candidates. If the bot was closed halfway, only the rest is made later."""
-        last = db.get_setting("batch_at")
-        now = datetime.now(timezone.utc)
-        if last and now - datetime.fromisoformat(last) < BATCH_EVERY:
+        if not batch_due():
             left = int(db.get_setting("batch_left") or 0)
             if left > 0 and pipeline.open_slots(hours=PICK_AHEAD_HOURS):
                 await self.make_batch(left, "🎞️ Ik maak de laatste **{n} shorts** van vandaag af.", daily="resume")
@@ -787,7 +811,7 @@ def register_commands(bot: ShortsBot):
             waiting += "**TikTok:** je krijgt na elke upload de TikTok-versie in Discord\n"
         await interaction.response.send_message(
             f"**Status:** {'⏸️ gepauzeerd' if paused else '▶️ actief'}\n"
-            f"**Modus:** {_mode_text()}\n"
+            f"**Modus:** {_mode_text()}{_batch_text()}\n"
             f"**Online-tijden:** {', '.join(pipeline.publish_times())} ({ZoneInfo(config.timezone).key})\n"
             f"{waiting}"
             + (f"**Letop:**\n{_watch_text(bot.watch_report)}\n" if db.get_setting("watch") == "1" else "")
