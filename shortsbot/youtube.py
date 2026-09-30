@@ -184,8 +184,12 @@ def tiktok_caption(clip) -> str:
         return f"{clip.title}\n\n" + " ".join(f"#{t}" for t in clip.tags)
     tags = ["fyp", "foryou", *(t for t in make_hashtags(clip) if t != "shorts")]
     names = ", ".join(p.broadcaster_name for p in clip.parts) if clip.parts else clip.broadcaster_name
-    credit = " ".join(credit_link(p) for p in (clip.parts or [clip]))
-    text = f"{clip.title} | {names}\n\nCredits: {credit}\n\n" + " ".join(f"#{t}" for t in dict.fromkeys(tags))
+    # The same credits as on YouTube: who it is, their channel and the original clip.
+    credits = "\n".join(
+        f"Credits: {p.broadcaster_name} — https://{credit_link(p)}\nOriginele clip: {p.url.split('&t=')[0]}"
+        for p in (clip.parts or [clip])
+    )
+    text = f"{clip.title} | {names}\n\n{credits}\n\n" + " ".join(f"#{t}" for t in dict.fromkeys(tags))
     return text[:2200]
 
 
