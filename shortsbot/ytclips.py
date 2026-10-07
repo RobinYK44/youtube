@@ -166,7 +166,9 @@ def download(clip: Clip, dest_dir: Path, ffmpeg: str) -> Path:
     FFmpegPostProcessor._ffmpeg_location.set(ffmpeg)
     opts = {
         "outtmpl": str(dest_dir / "source.%(ext)s"),
-        "format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b",
+        # Always with picture (a plain "b" can fall back to sound only), H.264 first: every ffmpeg can read it.
+        "format": "bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=1080][ext=mp4]+ba[ext=m4a]"
+        "/b[height<=1080][vcodec!=?none]/bv*[height<=1080]+ba/b[vcodec!=?none]",
         "merge_output_format": "mp4",
         "download_ranges": download_range_func(None, [(clip.start, clip.start + clip.duration)]),
         "force_keyframes_at_cuts": True,
@@ -174,7 +176,10 @@ def download(clip: Clip, dest_dir: Path, ffmpeg: str) -> Path:
     }
     with _ydl(**opts) as ydl:
         ydl.extract_info(clip.url.split("&t=")[0], download=True)
-    files = sorted(dest_dir.glob("source.*"), key=lambda f: f.stat().st_size, reverse=True)
+    files = sorted(
+        (f for f in dest_dir.glob("source.*") if f.suffix not in (".part", ".ytdl")),
+        key=lambda f: f.stat().st_size, reverse=True,
+    )
     if not files:
         raise RuntimeError("YouTube-video downloaden mislukt")
     return files[0]

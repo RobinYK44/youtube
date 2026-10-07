@@ -60,7 +60,7 @@ def _filter_path(path: Path | str) -> str:
 def download(url: str, dest_dir: Path) -> Path:
     opts = {
         "outtmpl": str(dest_dir / "source.%(ext)s"),
-        "format": "best[ext=mp4]/best",
+        "format": "best[ext=mp4][vcodec!=?none]/best[vcodec!=?none]/best",  # never sound only
         "quiet": True,
         "no_warnings": True,
         "ffmpeg_location": ffmpeg_exe(),
@@ -77,6 +77,13 @@ def _duration(video: Path) -> float:
         return 0.0
     hours, minutes, seconds = match.groups()
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def _check_picture(video: Path) -> None:
+    """A download with only sound makes ffmpeg fail with an unreadable error; say what is wrong instead."""
+    result = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(video)], capture_output=True, text=True)
+    if "Video:" not in result.stderr:
+        raise RuntimeError("de download had alleen geluid en geen beeld (YouTube/Twitch gaf geen bruikbare video)")
 
 
 def _end_card(font: str, work_dir: Path, length: float) -> list[str]:
@@ -124,6 +131,7 @@ def render_short(
     limit: int | None = None, end_card: bool = True, smart_layout: bool = True,
 ) -> Path:
     font = _font()
+    _check_picture(source)
     start, length = _cut(_duration(source), limit)
     shape = layout.choose(source, start, length) if smart_layout else layout.Layout("full")
     log.info("Layout: %s", shape.kind)
