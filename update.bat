@@ -15,6 +15,8 @@ rem YouTube verandert vaak iets: altijd de nieuwste yt-dlp.
 python -m pip install -q -U yt-dlp
 rem Spraakherkenning voor de ondertitels. Lukt dit niet, dan maakt de bot shorts zonder ondertitels.
 python -m pip install -q faster-whisper || echo Ondertitels installeren lukte niet, de bot werkt verder zonder.
+rem Gezichtsherkenning voor de facecam-layout. Lukt dit niet, dan komt de clip er heel in, zoals eerst.
+python -m pip install -q "opencv-python-headless<5" || echo Gezichtsherkenning installeren lukte niet, de bot werkt verder zonder.
 curl -fsSL -o update.new "%BASE%/update.bat?v=%V%"
 echo.
 echo Klaar! Dubbelklik nu op start.bat om de bot te starten.

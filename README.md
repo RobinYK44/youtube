@@ -149,6 +149,15 @@ blijft ook staan na kiezen of afkeuren: de bot bewaart de video's 3 dagen.
 Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met de meeste views.
 `/kiesmodus aantal:0` zet hem weer op volledig automatisch.
 
+### Het hele scherm gevuld
+De bot zoekt in elke clip het gezicht van de streamer (gratis, op je eigen pc, met OpenCV):
+- **Facecam in een hoek:** de facecam komt bovenaan, de game eronder, en het hele scherm is gevuld.
+- **Streamer in beeld** (Just Chatting, IRL): een hoge uitsnede rond het gezicht, schermvullend.
+- **Geen gezicht gevonden:** de hele clip in het midden, zoals eerst. Er valt dan niks weg.
+
+Bij een gevuld scherm staat de titel alleen de eerste seconden in beeld, zodat hij het gezicht niet bedekt. Vyro-clips
+blijven altijd heel.
+
 ### Ondertitels en leren van je views
 - **Ondertitels:** de bot schrijft uit wat er gezegd wordt en zet het groot in beeld, 3 woorden tegelijk (om en om wit en
   geel). Dat gebeurt gratis op je eigen pc met spraakherkenning (faster-whisper). De eerste keer downloadt hij een model

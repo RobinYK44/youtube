@@ -81,6 +81,9 @@ def age_hours(clip: Clip, now: datetime | None = None) -> float:
     return max(1.0, ((now or datetime.now(timezone.utc)) - created).total_seconds() / 3600)
 
 
+EVERYWHERE_VIEWS = 100_000  # a Twitch clip this big is reposted by many clip channels within a day
+
+
 def viral_score(clip: Clip, streamer_median: float, now: datetime | None = None) -> float:
     """Guess how likely a clip is to do well as a Short. The bot cannot watch the video, so it uses:
     how fast the views come in, whether the clip stands out for this streamer, title words and length."""
@@ -91,6 +94,17 @@ def viral_score(clip: Clip, streamer_median: float, now: datetime | None = None)
     title = clip.title.lower()
     if youtube.moods(clip.title) or any(word in title for word in HOT_WORDS):
         score *= 1.5
+    # Be early: a clip from the last hours is not on 50 other clip channels yet. YouTube shows the version of the
+    # biggest channel when many upload the same clip, so an old, huge clip is one we are almost never shown with.
+    hours = age_hours(clip, now)
+    if hours <= 6:
+        score *= 1.6
+    elif hours <= 24:
+        score *= 1.3
+    elif hours > 48:
+        score *= 0.6
+    if clip.view_count > EVERYWHERE_VIEWS and hours > 24:
+        score *= 0.75
     # Short Shorts do best: 12-30 s is ideal, long clips get cut and may lose context.
     if 12 <= clip.duration <= 30:
         score *= 1.2

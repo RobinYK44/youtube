@@ -1,5 +1,6 @@
 """Download a clip and turn it into a vertical 1080x1920 YouTube Short with ffmpeg."""
 import functools
+import logging
 import re
 import shutil
 import subprocess
@@ -10,8 +11,11 @@ from pathlib import Path
 
 import yt_dlp
 
-from . import captions
+from . import captions, layout
 from .config import config
+
+log = logging.getLogger("shortsbot")
+HOOK_SECONDS = 3.5  # filled screen: how long the title shows at the start
 
 FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -117,36 +121,38 @@ def _cut(duration: float, limit: int | None = None) -> tuple[float, float]:
 
 def render_short(
     source: Path, output: Path, title: str, credit: str, work_dir: Path,
-    limit: int | None = None, end_card: bool = True,
+    limit: int | None = None, end_card: bool = True, smart_layout: bool = True,
 ) -> Path:
     font = _font()
     start, length = _cut(_duration(source), limit)
+    shape = layout.choose(source, start, length) if smart_layout else layout.Layout("full")
+    log.info("Layout: %s", shape.kind)
+    full = shape.kind == "full"
     overlays = []
     if font:
         lines = textwrap.wrap(_plain(title), width=22)[:3]
-        texts = [(line, 64, 200 + i * 80) for i, line in enumerate(lines)]
+        if full:  # the title above the clip, the whole time
+            texts = [(line, 64, 200 + i * 80, "") for i, line in enumerate(lines)]
+        else:  # the screen is filled: the title only as a hook in the first seconds, so it does not hide the face
+            texts = [(line, 60, 90 + i * 78, f":box=1:boxcolor=black@0.55:boxborderw=14:enable='lt(t,{HOOK_SECONDS})'")
+                     for i, line in enumerate(lines)]
         if credit:
-            texts.append((credit, 44, "h-320"))
-        for i, (text, size, y) in enumerate(texts):
+            texts.append((credit, 44 if full else 36, "h-320" if full else "h-130", ""))
+        for i, (text, size, y, extra) in enumerate(texts):
             text_file = work_dir / f"text{i}.txt"
             text_file.write_text(text, encoding="utf-8")
             overlays.append(
                 f"drawtext=fontfile={_filter_path(font)}:textfile={_filter_path(text_file)}"
                 f":fontsize={size}:fontcolor=white:borderw=5:bordercolor=black"
-                f":x=(w-text_w)/2:y={y}"
+                f":x=(w-text_w)/2:y={y}{extra}"
             )
-        overlays += captions.filters(source, start, length, work_dir, font, y=1290)  # just below the clip
+        # Captions just below the clip, on the line between facecam and game, or low on a filled screen.
+        caption_y = {"full": 1290, "split": layout.TOP_HEIGHT - 60, "fill": 1250}[shape.kind]
+        overlays += captions.filters(source, start, length, work_dir, font, y=caption_y)
         if end_card:
             overlays += _end_card(font, work_dir, length)
 
-    graph = (
-        "[0:v]split[a][b];"
-        "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-        "boxblur=20:5,eq=brightness=-0.15[bg];"
-        # Zoom in: cut a bit off the sides so the clip fills more of the phone screen.
-        f"[b]crop=iw/{config.clip_zoom}:ih,scale=1080:-2[fg];"
-        "[bg][fg]overlay=(W-w)/2:(H-h)/2" + "".join("," + o for o in overlays) + ",format=yuv420p[v]"
-    )
+    graph = layout.video_filter(shape) + "".join("," + o for o in overlays) + ",format=yuv420p[v]"
     cmd = [
         ffmpeg_exe(), "-y", "-loglevel", "error",
         "-ss", f"{start:.2f}", "-i", str(source),
@@ -246,5 +252,8 @@ def make_youtube_short(clip, output_dir: Path) -> Path:
         work = Path(tmp)
         source = ytclips.download(clip, work, ffmpeg_exe())
         credit = "" if vyro else f"youtube.com/@{clip.broadcaster_login}"
-        render_short(source, output, clip.title, credit, work, limit=config.max_short_seconds, end_card=not vyro)
+        render_short(
+            source, output, clip.title, credit, work, limit=config.max_short_seconds, end_card=not vyro,
+            smart_layout=not vyro,
+        )
     return output

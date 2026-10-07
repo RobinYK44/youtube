@@ -9,6 +9,7 @@ import html
 import os
 import re
 import sys
+import unicodedata
 import webbrowser
 from datetime import datetime, timezone
 
@@ -30,7 +31,7 @@ class NeedsLogin(RuntimeError):
 # Hashtags are guessed from the clip title, the streamer and the game: the bot cannot watch the video,
 # so the mood (funny, scary, ...) comes from words in the title. General tags fill up the rest.
 MOODS = {
-    "funny": ["lol", "lmao", "lmfao", "funny", "haha", "joke", "prank", "laugh", "crying", "😂", "🤣", "💀"],
+    "funny": ["lol", "lmao", "lmfao", "funny", "hilarious", "haha", "joke", "prank", "laugh", "crying", "😂", "🤣", "💀"],
     "rage": ["rage", "mad", "angry", "tilt", "scream", "yell", "😡", "🤬"],
     "scary": ["scary", "scared", "horror", "jumpscare", "jump scare", "ghost", "creepy", "😱"],
     "clutch": ["clutch", "insane", "crazy", "cracked", "1v", "ace", "no way", "impossible", "goat", "🔥"],
@@ -102,9 +103,35 @@ NO_GAME = {"just chatting", "irl", "talk shows & podcasts", "special events", "m
 _given: list[str] = []  # titles given since the bot started, also for candidates that are not saved yet
 
 
+MOOD_EMOJI = {"funny": "😂", "rage": "😡", "scary": "😱", "clutch": "🔥", "fail": "💀", "wholesome": "❤️", "music": "🎵"}
+CHATTER = re.compile(r"\b(lmk|pls|plz|ong|fr fr|no cap)\b", re.IGNORECASE)
+
+
 def says_nothing(title: str) -> bool:
+    """Too short to make anyone curious: 'sucks', 'kai talks gigi', 'REAL VOICE LOL'."""
     words = re.findall(r"[^\W\d_]{2,}", title)
-    return len(words) < 3 or sum(len(w) for w in words) < 12
+    return len(words) < 4 or sum(len(w) for w in words) < 14
+
+
+def clean_title(title: str) -> str:
+    """Tidy a Twitch title: no hashtags or chat talk, no '????' or 'BOIZZZZZ', a capital first letter and an
+    emoji at the end that fits the mood."""
+    text = re.sub(r"#\w+", "", title)
+    text = CHATTER.sub("", text)
+    text = re.sub(r"([?!])[?!]+", r"\1", text)
+    text = re.sub(r"(\w)\1{2,}", r"\1\1", text)
+    # '(which core member do you think will have kids first?)': a question to chat, not part of the title.
+    text = re.sub(r"\(([^()]*)\)", lambda m: "" if "?" in m.group(1) or len(m.group(1).split()) > 3 else m.group(0), text)
+    text = " ".join(text.split()).strip(" -|,.")
+    if not text:
+        return title.strip()
+    if text.islower():
+        text = text[0].upper() + text[1:]
+    if not any(unicodedata.category(ch) == "So" for ch in text[-3:]):
+        mood = next(iter(moods(title)), "")
+        default = "😭💀😳🤯"[int(hashlib.sha1(title.encode()).hexdigest(), 16) % 4]
+        text += " " + MOOD_EMOJI.get(mood, default)
+    return text
 
 
 def _shape(title: str, name: str, game: str = "") -> str:
@@ -131,7 +158,7 @@ def better_title(clip) -> str:
     """Keep a clear Twitch title, replace a meaningless one ('asfsaf', 'WOOO', 'sucks') with the kind of title
     that was used longest ago, so the channel does not show the same title over and over."""
     if not says_nothing(clip.title):
-        return clip.title
+        return clean_title(clip.title)
     mood = next(iter(moods(clip.title)), "")
     game = getattr(clip, "game", "") or ""
     options = TITLE_TEMPLATES[mood] + (TITLE_TEMPLATES[""] if mood else [])

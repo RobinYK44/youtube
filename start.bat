@@ -9,6 +9,8 @@ if not exist shortsbot\tiktok.py (
 )
 rem Spraakherkenning voor de ondertitels (eenmalig, ongeveer een minuut).
 python -c "import faster_whisper" 2>nul || (echo Ondertitels installeren, even geduld... & python -m pip install -q faster-whisper)
+rem Gezichtsherkenning voor de facecam-layout (eenmalig).
+python -c "import cv2; cv2.CascadeClassifier" 2>nul || (echo Gezichtsherkenning installeren, even geduld... & python -m pip install -q "opencv-python-headless<5")
 python main.py
 echo.
 echo De bot is gestopt.

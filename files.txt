@@ -11,6 +11,7 @@ shortsbot/captions.py
 shortsbot/config.py
 shortsbot/db.py
 shortsbot/editor.py
+shortsbot/layout.py
 shortsbot/pipeline.py
 shortsbot/tiktok.py
 shortsbot/twitch.py
