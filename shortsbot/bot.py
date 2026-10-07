@@ -41,8 +41,8 @@ def _error_text(exc: Exception) -> str:
         return "YouTube-limiet voor vandaag bereikt. Morgen gaat de bot automatisch verder."
     if "invalid_grant" in text:
         return (
-            "YouTube-login is verlopen. Draai op je pc `python -m shortsbot.youtube auth` "
-            "en start de bot opnieuw."
+            "YouTube-login is verlopen. Sluit de bot, dubbelklik op **youtube_login** en start de bot opnieuw. "
+            "Gebeurt dit elke week? Zet dan in Google Cloud bij **Audience** je app op **In production**."
         )
     return f"{type(exc).__name__}: {text[:1500]}"
 
