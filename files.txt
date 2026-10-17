@@ -4,6 +4,7 @@ start.bat
 tiktok_login.bat
 youtube_login.bat
 naar_server.bat
+claude_toegang.bat
 files.txt
 shortsbot/__init__.py
 shortsbot/bot.py
@@ -11,6 +12,7 @@ shortsbot/captions.py
 shortsbot/config.py
 shortsbot/db.py
 shortsbot/editor.py
+shortsbot/insights.py
 shortsbot/layout.py
 shortsbot/pipeline.py
 shortsbot/tiktok.py

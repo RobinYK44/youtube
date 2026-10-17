@@ -149,6 +149,13 @@ blijft ook staan na kiezen of afkeuren: de bot bewaart de video's 3 dagen.
 Kies je niet op tijd, dan kiest de bot 45 minuten van tevoren zelf de short met de meeste views.
 `/kiesmodus aantal:0` zet hem weer op volledig automatisch.
 
+### Claude laten meekijken in je cijfers
+Dubbelklik op `claude_toegang.bat` en log in. Dat is een aparte login die je kanaalcijfers alleen kan **lezen** (niks
+uploaden, aanpassen of verwijderen). Er opent een bestand met drie regels (`YT_READ_CLIENT_ID`, `YT_READ_CLIENT_SECRET`,
+`YT_READ_REFRESH_TOKEN`). Zet die als environment variables in de instellingen van je Claude-omgeving, niet in een chat.
+Daarna kan Claude in een nieuwe sessie `python -m shortsbot.insights rapport` draaien. Intrekken kan via
+myaccount.google.com/permissions.
+
 ### Het hele scherm gevuld
 De bot zoekt in elke clip het gezicht van de streamer (gratis, op je eigen pc, met OpenCV):
 - **Facecam in een hoek:** de facecam komt bovenaan, de game eronder, en het hele scherm is gevuld.
